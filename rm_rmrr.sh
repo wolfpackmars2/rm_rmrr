@@ -96,7 +96,7 @@ EOM
 #----------------------------------------------------------------------------------------------------------------------
 mk_bootstrap_script()
 {
-    cat > "${_VAGRANTFILE_DIR}/vagrant_bootstrap.sh" <<- EOM
+    cat > "vagrant_bootstrap.sh" <<- EOM
 #!/bin/sh -
 cd /root
 echo "==== UPDATE OS ====================================="
@@ -128,8 +128,6 @@ pkgs="gnupg2 \${pkgs}"
 pkgs="rsync \${pkgs}"
 pkgs="lintian \${pkgs}"
 pkgs="debhelper \${pkgs}"
-echo "Packages to be installed:"
-echo "${pkgs}"
 echo "==== BEGIN APT PACKAGE INSTALL ====================================="
 DEBIAN_FRONTEND=noninteractive apt install -y \${pkgs}
 echo "==== GET SOURCES ====================================="
@@ -141,10 +139,8 @@ replace="local   all             postgres                                md5"
 targetfile="/etc/postgresql/10/main/pg_hba.conf"
 #sed -i "s/\${search}/\${replace}/g" "\${targetfile}"
 #grep -q "\${replace}" "\${targetfile}" || ( echo "Err 5103 pgsql config failed" && exit 1 )
-echo "==== RUNNING RAKE TASKS ========================================="
-echo "==== END POST INSTALL TASKS ====================================="
+echo "==== BOOTSTRAP COMPLETE ========================================="
 exit 0
-
 EOM
 }
 
