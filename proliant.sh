@@ -70,97 +70,6 @@ mk_bootstrap_script()
     cat > "${_VAGRANTFILE_DIR}/vagrant_bootstrap.sh" <<- EOM
 #!/bin/sh -
 cd /root
-echo "==== BEGIN YARN SETUP ====================================="
-curl -sS https://dl.yarnpkg.com/debian/pubkey.gpg | apt-key add -
-echo "deb https://dl.yarnpkg.com/debian/ stable main" > "/etc/apt/sources.list.d/yarn.list"
-echo "==== END YARN SETUP ====================================="
-apt update
-DEBIAN_FRONTEND=noninteractive apt upgrade -y
-echo "==== BEGIN ADD RUBY REPO ====================================="
-apt-add-repository ppa:brightbox/ruby-ng -y
-echo "==== END ADD RUBY REPO ====================================="
-pkgs="build-essential"
-pkgs="ruby2.5 \${pkgs}"
-pkgs="ruby2.5-dev \${pkgs}"
-pkgs="zip \${pkgs}"
-pkgs="libxslt-dev \${pkgs}"
-pkgs="libxml2-dev \${pkgs}"
-pkgs="libpq-dev \${pkgs}"
-pkgs="yarn \${pkgs}"
-pkgs="p7zip \${pkgs}"
-pkgs="nginx \${pkgs}"
-pkgs="openjdk-8-jdk \${pkgs}"
-pkgs="postgresql-contrib \${pkgs}"
-pkgs="postgresql \${pkgs}"
-echo "==== BEGIN APT PACKAGE INSTALL ====================================="
-DEBIAN_FRONTEND=noninteractive apt install -y \${pkgs}
-echo "==== END APT PACKAGE INSTALL ====================================="
-cd "${_GUESTFILES_DIR}"
-echo "==== BEGIN GEM UPDATE ====================================="
-gem update --system
-echo "==== END GEM UPDATE ===== BEGIN BUNDLE INSTALL ========================="
-if ! [ -e /usr/bin/bundle ]; then
-    ln -s \`ls -r1 /usr/bin/bundle* | head -n 1 || ( echo "bundler not found && exit 1" )\` /usr/bin/bundle
-fi
-if ! [ -e /usr/bin/bundler ]; then
-    ln -s \`ls -r1 /usr/bin/bundle* | head -n 1 || ( echo "bundler not found && exit 1" )\` /usr/bin/bundler
-fi
-su vagrant -c "bundle install --path vendor/bundler" || ( echo "Err 5099" && exit 1 )
-echo "==== END BUNDLE INSTALL ====================================="
-#/usr/lib/postgresql/10/bin/pg_ctl -D /var/lib/postgresql/10/main start
-service postgresql start
-sudo -u postgres psql -c "ALTER USER postgres PASSWORD 'password';"
-echo "==== BEGIN POST INSTALL TASKS ====================================="
-echo "cd \\"${_GUESTFILES_DIR}\\"" >> ~/.bashrc
-mv /vagrant/certs.spartan-ecommerce_vagrant.crt \\
-  /etc/ssl/certs/spartan-ecommerce_vagrant.crt || ( echo "Err 5100" && exit 1 )
-chown root:root /etc/ssl/certs/spartan-ecommerce_vagrant.crt
-mv /vagrant/private.spartan-ecommerce_vagrant.key \\
-  /etc/ssl/private/spartan-ecommerce_vagrant.key || ( echo "Err 5102" && exit 1 )
-chown root:ssl-cert /etc/ssl/private/spartan-ecommerce_vagrant.key || ( echo "Err 5103" && exit 1 )
-search="local   all             postgres                                peer"
-replace="local   all             postgres                                md5"
-targetfile="/etc/postgresql/10/main/pg_hba.conf"
-sed -i "s/\${search}/\${replace}/g" "\${targetfile}"
-grep -q "\${replace}" "\${targetfile}" || ( echo "Err 5103 pgsql config failed" && exit 1 )
-#sed -i 's/local   all             postgres                                peer/local   all             postgres                                md5/g' /etc/postgresql/10/main/pg_hba.conf
-#echo "local   all             postgres                                md5" \\
-#  >> /etc/postgresql/10/main/conf.d/50-devbootstrap.conf
-service postgresql restart
-mv /vagrant/sites-available.spartan-ecommerce_vagrant \\
-  /etc/nginx/sites-available/spartan-ecommerce_vagrant
-chown vagrant:vagrant /etc/nginx/sites-available/spartan-ecommerce_vagrant
-ln -s /etc/nginx/sites-available/spartan-ecommerce_vagrant \\
-  /etc/nginx/sites-enabled/spartan-ecommerce_vagrant
-cd "${_GUESTFILES_DIR}"
-# remove existing solr directory
-if [ -d ./solr ]; then
-  rm -rf solr
-fi
-echo "==== RUNNING RAKE TASKS ========================================="
-echo " >> rake db:setup"
-bin/rake db:setup || echo "rake db:setup failed"
-echo " >> rake sunspot:solr:start"
-bin/rake sunspot:solr:start || echo "rake sunspot:solr:start failed"
-echo " >> rake import:macpac:all"
-bin/rake import:macpac:all || echo "rake import:all failed"
-echo " >> rake sunspot:reindex"
-bin/rake sunspot:reindex || echo "rake sunspot:reindex failed"
-echo "==== END POST INSTALL TASKS ====================================="
-exit 0
-
-EOM
-}
-
-#---  FUNCTION  -------------------------------------------------------------------------------------------------------
-#         NAME:  mk_bootstrap_script
-#  DESCRIPTION:  Creates script to bootstrap the vagrant VM
-#----------------------------------------------------------------------------------------------------------------------
-mk_bootstrap_script()
-{
-    cat > "${_VAGRANTFILE_DIR}/vagrant_bootstrap.sh" <<- EOM
-#!/bin/sh -
-cd /root
 echo "==== UPDATE OS ====================================="
 apt update
 DEBIAN_FRONTEND=noninteractive apt upgrade -y
@@ -190,6 +99,8 @@ pkgs="gnupg2 \${pkgs}"
 pkgs="rsync \${pkgs}"
 pkgs="lintian \${pkgs}"
 pkgs="debhelper \${pkgs}"
+echo "Packages to be installed:"
+echo "${pkgs}"
 echo "==== BEGIN APT PACKAGE INSTALL ====================================="
 DEBIAN_FRONTEND=noninteractive apt install -y \${pkgs}
 echo "==== GET SOURCES ====================================="
@@ -333,14 +244,13 @@ fi
 #----------------------------------------------------------------------------------------------------------------------
 __detect_color_support
 getram
-echo $_VAGRANT_VM_RAM
-echo $_VAGRANT_VM_CORES
-echo ${_VAGRANTFILE_DIR}
+echo "VM RAM: ${_VAGRANT_VM_RAM}"
+echo "VM CPU: ${_VAGRANT_VM_CORES}"
 vagrant_box
 mk_vagrantfile
 mk_bootstrap_script
 vagrant up || ( echoerror "vagrant up failed" && exit 1 )
 vcmd="sudo sh /vagrant/vagrant_bootstrap.sh"
-echo "${vcmd}"
+echo "Vagrant Bootstrap Command: ${vcmd}"
 vagrant ssh "${_VAGRANT_VM_NAME}" -- -q -t "${vcmd}" || echo "Vagrant command failed"
 
