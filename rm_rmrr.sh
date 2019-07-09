@@ -154,7 +154,7 @@ EOM
 #----------------------------------------------------------------------------------------------------------------------
 __detect_color_support() {
     # shellcheck disable=SC2181
-    _COLORS=(tput colors 2>/dev/null || echo 0)
+    _COLORS=`tput colors 2>/dev/null || echo 0`
     if [ $? -eq 0 ] && [ "$_COLORS" -gt 2 ]; then
         RC='\033[1;31m'
         GC='\033[1;32m'
