@@ -83,6 +83,7 @@ Vagrant.configure("2") do |config|
         vb.cpus = vm_cpus
       end
       mk.vm.box = vm_vagbox
+      mk.vm.synced_folder '.', '/vagrant', SharedFoldersEnableSymlinksCreate: false
       mk.vm.network "private_network", ip: private_network + "." + (vm_ip + i).to_s
     end
   end
@@ -238,7 +239,7 @@ realpath() {
 vagrant_box()
 {
     if ! (vagrant box list | grep "${_VAGRANT_VM_BOX}"); then
-        if ! [ vagrant box add "${_VAGRANT_VM_BOX}" ]; then
+        if ! (vagrant box add "${_VAGRANT_VM_BOX}"); then
             echoerror "Unable to load vagrant box ${_VAGRANT_VM_BOX}. Cannot continue."
             exit 1
         fi
