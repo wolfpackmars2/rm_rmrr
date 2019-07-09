@@ -1,11 +1,40 @@
 #!/bin/sh -
-# requires min. 4GiB RAM, CPU Cores >= 4
-# recommend 16GiB RAM or greater, Quad Core CPU with HT or better
+#======================================================================================================================
+# vim: softtabstop=4 shiftwidth=4 expandtab fenc=utf-8 spell spelllang=en cc=120
+#======================================================================================================================
+#
+#          FILE: pve-rm_rmrr.sh
+#
+#   DESCRIPTION: Create RMRR patch for latest PVE (Proxmox) kernel
+#                Min Requirements: CPU Cores >= 4; 4GiB RAM
+#                Rec Requirements: Quad Core CPU with HT or better; 16GiB RAM or greater
+#                OS: Mac or Linux
+#                Requires Oracle Virtualbox and Hashicorp Vagrant
+#
+#          BUGS: github.com/wolfpackmars2
+#
+#     COPYRIGHT: (c) 2019 S. Groesz
+#
+#  ORGANIZATION: GROESZ
+#       CREATED: 2019.07.09
+#======================================================================================================================
+set -o nounset                              # Treat unset variables as an error
+
 _VAGRANT_VM_CORES=`grep -c ^processor /proc/cpuinfo`
 _VAGRANT_VM_CORES=`expr $_VAGRANT_VM_CORES - 2`
 _VAGRANT_VM_NAME="HPRMRRPATCH"
 _VAGRANT_VM_BOX="ubuntu/bionic64"
 _VAGRANTFILE_DIR="`pwd`"
+
+# Bootstrap script truth values
+BS_TRUE=1
+BS_FALSE=0
+
+__LogFile=$BS_FALSE
+_ECHO_DEBUG=${BS_ECHO_DEBUG:-$BS_FALSE}
+
+# Default sleep time used when waiting for daemons to start, restart and checking for these running
+__DEFAULT_SLEEP=3
 
 #---  FUNCTION  -------------------------------------------------------------------------------------------------------
 #         NAME:  getram
@@ -125,6 +154,7 @@ EOM
 #----------------------------------------------------------------------------------------------------------------------
 __detect_color_support() {
     # shellcheck disable=SC2181
+    _COLORS=(tput colors 2>/dev/null || echo 0)
     if [ $? -eq 0 ] && [ "$_COLORS" -gt 2 ]; then
         RC='\033[1;31m'
         GC='\033[1;32m'
