@@ -116,6 +116,7 @@ pkgs="libnuma-dev \${pkgs}"
 pkgs="libslang2-dev \${pkgs}"
 pkgs="libiberty-dev \${pkgs}"
 pkgs="sphinx-common \${pkgs}"
+pkgs="python3-sphinx \${pkgs}"
 pkgs="bc \${pkgs}"
 pkgs="flex \${pkgs}"
 pkgs="bison \${pkgs}"
@@ -135,15 +136,23 @@ echo "==== GET SOURCES ====================================="
 git clone --depth=1 git://git.proxmox.com/git/mirror_ubuntu-disco-kernel.git
 git clone --depth=1 git://git.proxmox.com/git/pve-kernel.git
 mv mirror_ubuntu-disco-kernel ubuntu-disco
-echo "==== BEGIN POST INSTALL TASKS ====================================="
+echo "==== CREATING PATCH FILE ============================================"
 search="return -EPERM;"
-#replace="local   all             postgres                                md5"
 targetfile="ubuntu-disco/drivers/iommu/intel-iommu.c"
 if (cat "\${targetfile}" | grep "\${search}"); then
     sed "/\${search}/d" "\${targetfile}" > intel-iommu_new.c
 fi
-#sed -i "s/\${search}/\${replace}/g" "\${targetfile}"
-#grep -q "\${replace}" "\${targetfile}" || ( echo "Err 5103 pgsql config failed" && exit 1 )
+patchfile="pve-kernel/patches/kernel/9000-remove_rmrr_check.patch"
+diff -u "\${targetfile}" intel-iommu_new.c > "\${patchfile}"
+sed -i "s|--- \${targetfile}|--- a/drivers/iommu/intel-iommu.c|g" "\${patchfile}"
+sed -i "s|+++ intel-iommu_new.c|+++ b/drivers/iommu/intel-iommu.c|g" "\${patchfile}"
+sed -i "s/{KREL}-pve/{krel}-pve-rmrmrr/g" pve-kernel/Makefile
+if [ -d submodules/ubuntu-disco ]; then
+    cd submodules
+    rm -rf ubuntu-disco
+    cd ..
+fi
+ln -sr ../ubuntu-disco submodules/ubuntu-disco
 echo "==== BOOTSTRAP COMPLETE ========================================="
 exit 0
 EOM
