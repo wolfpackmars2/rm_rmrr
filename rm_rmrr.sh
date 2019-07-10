@@ -26,8 +26,8 @@ _OPTIONS="x"
 _LONGOPTIONS="no-vagrant"
 _VAGRANT_VM_CORES=$(grep -c ^processor /proc/cpuinfo)
 _VAGRANT_VM_CORES=$((_VAGRANT_VM_CORES - 2))
-_VAGRANT_VM_NAME="HPRMRRPATCH"
-_VAGRANT_VM_BOX="ubuntu/bionic64"
+_VAGRANT_VM_NAME="RMRMRR"
+_VAGRANT_VM_BOX="bento/debian-9.6"
 _VAGRANTFILE_DIR=$(pwd)
 
 # Bootstrap script truth values
@@ -111,8 +111,10 @@ fi
 mkdir rmrmrr
 cd rmrmrr
 echo "==== UPDATE OS ====================================="
+wget http://download.proxmox.com/debian/proxmox-ve-release-5.x.gpg -O /etc/apt/trusted.gpg.d/proxmox-ve-release-5.x.gpg
+echo "deb http://download.proxmox.com/debian/pve stretch pve-no-subscription" > /etc/apt/sources.list.d/pve-install-repo.list
 apt update
-DEBIAN_FRONTEND=noninteractive apt upgrade -y
+DEBIAN_FRONTEND=noninteractive apt dist-upgrade -y
 echo "==== BUILD PKG LIST ====================================="
 pkgs="build-essential"
 pkgs="git \${pkgs}"
@@ -140,12 +142,25 @@ pkgs="gnupg2 \${pkgs}"
 pkgs="rsync \${pkgs}"
 pkgs="lintian \${pkgs}"
 pkgs="debhelper \${pkgs}"
+pkgs="dh-python \${pkgs}"
+pkgs="libpve-common-perl \${pkgs}"
 echo "==== BEGIN APT PACKAGE INSTALL ====================================="
 DEBIAN_FRONTEND=noninteractive apt install -y \${pkgs}
 echo "==== GET SOURCES ====================================="
-git clone --depth=1 git://git.proxmox.com/git/mirror_ubuntu-disco-kernel.git
 git clone --depth=1 git://git.proxmox.com/git/pve-kernel.git
+cd pve-kernel/submodules
+rm -rf ubuntu-disco
+git clone --depth=1 git://git.proxmox.com/git/mirror_ubuntu-disco-kernel
 mv mirror_ubuntu-disco-kernel ubuntu-disco
+rm -rf zfsonlinux
+git clone --depth=1 git://git.proxmox.com/git/zfsonlinux
+cd zfsonlinux
+git clone --depth=1 git://git.proxmox.com/git/mirror_zfs
+rm -rf upstream
+mv mirror_zfs upstream
+cd upstream/scripts
+rm -rf zfs-images
+git clone --depth=1 https://github.com/zfsonlinux/zfs-images
 echo "==== CREATING PATCH FILE ============================================"
 search="return -EPERM;"
 targetfile="ubuntu-disco/drivers/iommu/intel-iommu.c"
