@@ -161,9 +161,10 @@ mv mirror_zfs upstream
 cd upstream/scripts
 rm -rf zfs-images
 git clone --depth=1 https://github.com/zfsonlinux/zfs-images
+cd /root/rmrmrr
 echo "==== CREATING PATCH FILE ============================================"
 search="return -EPERM;"
-targetfile="ubuntu-disco/drivers/iommu/intel-iommu.c"
+targetfile="pve-kernel/submodules/ubuntu-disco/drivers/iommu/intel-iommu.c"
 if (cat "\${targetfile}" | grep "\${search}"); then
     sed "/\${search}/d" "\${targetfile}" > intel-iommu_new.c
 fi
@@ -173,12 +174,7 @@ sed -i "s|--- \${targetfile}|--- a/drivers/iommu/intel-iommu.c|g" "\${patchfile}
 sed -i "s|+++ intel-iommu_new.c|+++ b/drivers/iommu/intel-iommu.c|g" "\${patchfile}"
 sed -i "s/{KREL}-pve/{krel}-pve-rmrmrr/g" pve-kernel/Makefile
 rm intel-iommu_new.c
-if [ -d pve-kernel/submodules/ubuntu-disco ]; then
-    cd pve-kernel/submodules
-    rm -rf ubuntu-disco
-    cd ../..
-fi
-ln -sr ubuntu-disco pve-kernel/submodules/ubuntu-disco
+echo "cd into /root/rmrmrr/pve-kernel and run make"
 echo "==== BOOTSTRAP COMPLETE ========================================="
 exit 0
 EOM
