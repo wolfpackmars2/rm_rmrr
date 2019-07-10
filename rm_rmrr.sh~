@@ -133,6 +133,7 @@ echo "==== BEGIN APT PACKAGE INSTALL ====================================="
 DEBIAN_FRONTEND=noninteractive apt install -y \${pkgs}
 echo "==== GET SOURCES ====================================="
 git clone --depth=1 git://git.proxmox.com/git/mirror_ubuntu-disco-kernel.git
+git clone --depth=1 git://git.proxmox.com/git/pve-kernel.git
 mv mirror_ubuntu-disco-kernel ubuntu-disco
 echo "==== BEGIN POST INSTALL TASKS ====================================="
 search="local   all             postgres                                peer"

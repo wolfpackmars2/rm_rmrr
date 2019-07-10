@@ -136,9 +136,12 @@ git clone --depth=1 git://git.proxmox.com/git/mirror_ubuntu-disco-kernel.git
 git clone --depth=1 git://git.proxmox.com/git/pve-kernel.git
 mv mirror_ubuntu-disco-kernel ubuntu-disco
 echo "==== BEGIN POST INSTALL TASKS ====================================="
-search="local   all             postgres                                peer"
-replace="local   all             postgres                                md5"
-targetfile="/etc/postgresql/10/main/pg_hba.conf"
+search="return -EPERM;"
+#replace="local   all             postgres                                md5"
+targetfile="ubuntu-disco/drivers/iommu/intel-iommu.c"
+if (cat "\${targetfile}" | grep "\${search}"); then
+    sed "/\${search}/d" "\${targetfile}" > intel-iommu_new.c
+fi
 #sed -i "s/\${search}/\${replace}/g" "\${targetfile}"
 #grep -q "\${replace}" "\${targetfile}" || ( echo "Err 5103 pgsql config failed" && exit 1 )
 echo "==== BOOTSTRAP COMPLETE ========================================="
