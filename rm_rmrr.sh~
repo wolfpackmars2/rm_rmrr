@@ -326,13 +326,16 @@ done
 #----------------------------------------------------------------------------------------------------------------------
 #  DESCRIPTION:  Run sanity checks
 #----------------------------------------------------------------------------------------------------------------------
-if ! (__check_command_exists vagrant) && [ $_skip_vagrant -eq $BS_FALSE ]; then
+#if ! [ $(id -u) -eq 0 ]; then
+#    echoerror "must be run as root"
+#fi
+if ! [ __check_command_exists vagrant ] && ! [ $_skip_vagrant ]; then
     echo
     echoerror "vagrant missing. Install vagrant from https://vagrantup.com"
     echo
     exit 1
 fi
-if ! (__check_command_exists virtualbox) && ! [ $_skip_vagrant -eq $BS_FALSE ]; then
+if ! [ __check_command_exists virtualbox ] && ! [ $_skip_vagrant ]; then
     echo
     echoerror "virtualbox missing. Install virtualbox from https://www.virtualbox.com"
     echo
