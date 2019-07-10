@@ -21,26 +21,20 @@
 set -o nounset                              # Treat unset variables as an error
 
 __ScriptName="rm_rmrr.sh"
-__ScriptFullName="$0"
-__ScriptArgs="$*"
 
 _OPTIONS="x"
 _LONGOPTIONS="no-vagrant"
-_VAGRANT_VM_CORES=`grep -c ^processor /proc/cpuinfo`
-_VAGRANT_VM_CORES=`expr $_VAGRANT_VM_CORES - 2`
+_VAGRANT_VM_CORES=$(grep -c ^processor /proc/cpuinfo)
+_VAGRANT_VM_CORES=$((_VAGRANT_VM_CORES - 2))
 _VAGRANT_VM_NAME="HPRMRRPATCH"
 _VAGRANT_VM_BOX="ubuntu/bionic64"
-_VAGRANTFILE_DIR="`pwd`"
+_VAGRANTFILE_DIR=$(pwd)
 
 # Bootstrap script truth values
 BS_TRUE=1
 BS_FALSE=0
 
-__LogFile=$BS_FALSE
 _ECHO_DEBUG=${BS_ECHO_DEBUG:-$BS_FALSE}
-
-# Default sleep time used when waiting for daemons to start, restart and checking for these running
-__DEFAULT_SLEEP=3
 
 #---  FUNCTION  -------------------------------------------------------------------------------------------------------
 #         NAME:  getram
@@ -48,17 +42,17 @@ __DEFAULT_SLEEP=3
 #----------------------------------------------------------------------------------------------------------------------
 getram()
 {
-  _VAGRANT_VM_RAM=`awk '/MemTotal/ { printf "%.3f \n", $2/1024/1024 }' /proc/meminfo`
-  if [ ${_VAGRANT_VM_RAM%.*} -ge 15 ]; then
+  _VAGRANT_VM_RAM=$(awk '/MemTotal/ { printf "%.3f \n", $2/1024/1024 }' /proc/meminfo)
+  if [ "${_VAGRANT_VM_RAM%.*}" -ge 15 ]; then
     _VAGRANT_VM_RAM=8192
   else
-    _VAGRANT_VM_RAM=`expr ${_VAGRANT_VM_RAM%.*} / 2`
-    rem=$(( $_VAGRANT_VM_RAM % 2 ))
+    _VAGRANT_VM_RAM=$((${_VAGRANT_VM_RAM%.*} / 2))
+    rem=$(( _VAGRANT_VM_RAM % 2 ))
     if [ $rem -gt 0 ]; then
-      _VAGRANT_VM_RAM=`expr ${_VAGRANT_VM_RAM} - 1`
+      _VAGRANT_VM_RAM=$((_VAGRANT_VM_RAM - 1))
     fi
     if [ $_VAGRANT_VM_RAM -lt 2 ]; then _VAGRANT_VM_RAM=2; fi
-    _VAGRANT_VM_RAM=`expr ${_VAGRANT_VM_RAM} \* 1024`
+    _VAGRANT_VM_RAM=$((_VAGRANT_VM_RAM * 1024))
   fi
 }
 
@@ -163,16 +157,17 @@ diff -u "\${targetfile}" intel-iommu_new.c > "\${patchfile}"
 sed -i "s|--- \${targetfile}|--- a/drivers/iommu/intel-iommu.c|g" "\${patchfile}"
 sed -i "s|+++ intel-iommu_new.c|+++ b/drivers/iommu/intel-iommu.c|g" "\${patchfile}"
 sed -i "s/{KREL}-pve/{krel}-pve-rmrmrr/g" pve-kernel/Makefile
-if [ -d submodules/ubuntu-disco ]; then
-    cd submodules
+rm intel-iommu_new.c
+if [ -d pve-kernel/submodules/ubuntu-disco ]; then
+    cd pve-kernel/submodules
     rm -rf ubuntu-disco
-    cd ..
+    cd ../..
 fi
-ln -sr ../ubuntu-disco submodules/ubuntu-disco
+ln -sr ubuntu-disco pve-kernel/submodules/ubuntu-disco
 echo "==== BOOTSTRAP COMPLETE ========================================="
 exit 0
 EOM
-    if $_skip_vagrant; then
+    if [ "$_skip_vagrant" -eq $BS_TRUE ]; then
         mv vagrant_bootstrap.sh bootstrap.sh
     fi
 }
@@ -182,8 +177,8 @@ EOM
 #   DESCRIPTION:  Try to detect color support.
 #----------------------------------------------------------------------------------------------------------------------
 __detect_color_support() {
+    _COLORS=$(tput colors 2>/dev/null || echo 0)
     # shellcheck disable=SC2181
-    _COLORS=`tput colors 2>/dev/null || echo 0`
     if [ $? -eq 0 ] && [ "$_COLORS" -gt 2 ]; then
         RC='\033[1;31m'
         GC='\033[1;32m'
@@ -205,7 +200,6 @@ __detect_color_support() {
 #----------------------------------------------------------------------------------------------------------------------
 echoerror() {
     printf "${RC} * ERROR${EC}: %s\\n" "$@" 1>&2;
-    write_logfile "ERROR: $@"
 }
 
 #---  FUNCTION  -------------------------------------------------------------------------------------------------------
@@ -214,7 +208,6 @@ echoerror() {
 #----------------------------------------------------------------------------------------------------------------------
 echoinfo() {
     printf "${GC} *  INFO${EC}: %s\\n" "$@";
-    write_logfile "INFO: $@"
 }
 
 #---  FUNCTION  -------------------------------------------------------------------------------------------------------
@@ -223,7 +216,6 @@ echoinfo() {
 #----------------------------------------------------------------------------------------------------------------------
 echowarn() {
     printf "${YC} *  WARN${EC}: %s\\n" "$@";
-    write_logfile "WARN: $@"
 }
 
 #---  FUNCTION  -------------------------------------------------------------------------------------------------------
@@ -234,7 +226,6 @@ echodebug() {
     if [ "$_ECHO_DEBUG" -eq $BS_TRUE ]; then
         printf "${BC} * DEBUG${EC}: %s\\n" "$@";
     fi
-    write_logfile "DEBUG: $@"
 }
 
 #---  FUNCTION  -------------------------------------------------------------------------------------------------------
@@ -246,22 +237,11 @@ __check_command_exists() {
 }
 
 #---  FUNCTION  -------------------------------------------------------------------------------------------------------
-#          NAME:  write_logfile
-#   DESCRIPTION:  Writes to the logfile
-#----------------------------------------------------------------------------------------------------------------------
-write_logfile()
-{
-    if [ "$__LogFile" -eq $BS_TRUE ]; then
-        echo "#[`date +"%Y%m%d %T"`] $@" >> "${_LOGFILE}"
-    fi
-}
-
-#---  FUNCTION  -------------------------------------------------------------------------------------------------------
 #         NAME:  realpath
 #  DESCRIPTION:  Cross-platform realpath command. Because Mac.
 #----------------------------------------------------------------------------------------------------------------------
 realpath() {
-    echo "`perl -e 'use Cwd "abs_path";print abs_path(shift)' "$1"`"
+    perl -e 'use Cwd "abs_path";print abs_path(shift)' "$1"
 }
 
 #---  FUNCTION  -------------------------------------------------------------------------------------------------------
@@ -326,13 +306,14 @@ done
 #----------------------------------------------------------------------------------------------------------------------
 #  DESCRIPTION:  Run sanity checks
 #----------------------------------------------------------------------------------------------------------------------
+__detect_color_support
 if ! (__check_command_exists vagrant) && [ $_skip_vagrant -eq $BS_FALSE ]; then
     echo
     echoerror "vagrant missing. Install vagrant from https://vagrantup.com"
     echo
     exit 1
 fi
-if ! (__check_command_exists virtualbox) && ! [ $_skip_vagrant -eq $BS_FALSE ]; then
+if ! (__check_command_exists virtualbox) && [ $_skip_vagrant -eq $BS_FALSE ]; then
     echo
     echoerror "virtualbox missing. Install virtualbox from https://www.virtualbox.com"
     echo
@@ -342,9 +323,8 @@ fi
 #---  MAIN  -----------------------------------------------------------------------------------------------------------
 #  DESCRIPTION:  Start main program
 #----------------------------------------------------------------------------------------------------------------------
-__detect_color_support
 mk_bootstrap_script
-if ! $_skip_vagrant; then
+if [ "$_skip_vagrant" -eq $BS_FALSE ]; then
     getram
     echo "VM RAM: ${_VAGRANT_VM_RAM}"
     echo "VM CPU: ${_VAGRANT_VM_CORES}"
