@@ -20,6 +20,12 @@
 #======================================================================================================================
 set -o nounset                              # Treat unset variables as an error
 
+__ScriptName="rm_rmrr.sh"
+__ScriptFullName="$0"
+__ScriptArgs="$*"
+
+_OPTIONS="x"
+_LONGOPTIONS="no-vagrant"
 _VAGRANT_VM_CORES=`grep -c ^processor /proc/cpuinfo`
 _VAGRANT_VM_CORES=`expr $_VAGRANT_VM_CORES - 2`
 _VAGRANT_VM_NAME="HPRMRRPATCH"
@@ -263,16 +269,57 @@ vagrant_box()
     fi
 }
 
+#---  FUNCTION  -------------------------------------------------------------------------------------------------------
+#         NAME:  __usage
+#  DESCRIPTION:  Display usage information.
+#----------------------------------------------------------------------------------------------------------------------
+__usage() {
+        cat << EOT
+
+          Usage :  ${__ScriptName} [options]
+
+          Options:
+            -x | --no-vagrant     Skip Vagrant usage
+
+            
+EOT
+}
+
+#----------------------------------------------------------------------------------------------------------------------
+#  Handle command line arguments
+#----------------------------------------------------------------------------------------------------------------------
+_skip_vagrant=$BS_FALSE
+
+_parsed=$(getopt --options=${_OPTIONS} --longoptions=${_LONGOPTIONS} --name "$0" -- "$@")
+eval set -- "$_parsed"
+
+while true; do
+    case "$1" in
+        -x|--no-vagrant)
+            _skip_vagrant=$BS_TRUE
+            shift
+            ;;
+        --)
+            shift
+            break
+            ;;
+        *)
+            echo "Unable to parse command line options."
+            exit 1
+            ;;
+    esac
+done
+
 #----------------------------------------------------------------------------------------------------------------------
 #  DESCRIPTION:  Run sanity checks
 #----------------------------------------------------------------------------------------------------------------------
-if ! __check_command_exists vagrant; then
+if ! [ __check_command_exists vagrant ] && ! [ $_skip_vagrant ]; then
     echo
     echoerror "vagrant missing. Install vagrant from https://vagrantup.com"
     echo
     exit 1
 fi
-if ! __check_command_exists virtualbox; then
+if ! [ __check_command_exists virtualbox ] && ! [ $_skip_vagrant ]; then
     echo
     echoerror "virtualbox missing. Install virtualbox from https://www.virtualbox.com"
     echo
@@ -283,14 +330,19 @@ fi
 #  DESCRIPTION:  Start main program
 #----------------------------------------------------------------------------------------------------------------------
 __detect_color_support
-getram
-echo "VM RAM: ${_VAGRANT_VM_RAM}"
-echo "VM CPU: ${_VAGRANT_VM_CORES}"
-vagrant_box
-mk_vagrantfile
 mk_bootstrap_script
-vagrant up || ( echoerror "vagrant up failed" && exit 1 )
-vcmd="sudo sh /vagrant/vagrant_bootstrap.sh"
-echo "Vagrant Bootstrap Command: ${vcmd}"
-vagrant ssh "${_VAGRANT_VM_NAME}" -- -q -t "${vcmd}" || echo "Vagrant command failed"
+if ! $_skip_vagrant; then
+    getram
+    echo "VM RAM: ${_VAGRANT_VM_RAM}"
+    echo "VM CPU: ${_VAGRANT_VM_CORES}"
+    vagrant_box
+    mk_vagrantfile
+    vagrant up || ( echoerror "vagrant up failed" && exit 1 )
+    vcmd="sudo sh /vagrant/vagrant_bootstrap.sh"
+    echo "Vagrant Bootstrap Command: ${vcmd}"
+    vagrant ssh "${_VAGRANT_VM_NAME}" -- -q -t "${vcmd}" || echo "Vagrant command failed"
+else
+    echo "Created bootstrap script. As root, run: sh bootstrap.sh"
+    echo ""
+fi
 
