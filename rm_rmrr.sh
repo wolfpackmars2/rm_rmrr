@@ -103,9 +103,19 @@ EOM
 #----------------------------------------------------------------------------------------------------------------------
 mk_bootstrap_script()
 {
+
     cat > "vagrant_bootstrap.sh" <<- EOM
 #!/bin/sh -
+if ! [ \$(id -u) -eq 0 ]; then
+    echo "Must be root"
+    exit 1
+fi
 cd /root
+if [ -d /root/rmrmrr ]; then
+    rm -rf rmrmrr
+fi
+mkdir rmrmrr
+cd rmrmrr
 echo "==== UPDATE OS ====================================="
 apt update
 DEBIAN_FRONTEND=noninteractive apt upgrade -y
@@ -162,6 +172,9 @@ ln -sr ../ubuntu-disco submodules/ubuntu-disco
 echo "==== BOOTSTRAP COMPLETE ========================================="
 exit 0
 EOM
+    if $_skip_vagrant; then
+        mv vagrant_bootstrap.sh bootstrap.sh
+    fi
 }
 
 #---  FUNCTION  -------------------------------------------------------------------------------------------------------
@@ -313,6 +326,9 @@ done
 #----------------------------------------------------------------------------------------------------------------------
 #  DESCRIPTION:  Run sanity checks
 #----------------------------------------------------------------------------------------------------------------------
+#if ! [ $(id -u) -eq 0 ]; then
+#    echoerror "must be run as root"
+#fi
 if ! [ __check_command_exists vagrant ] && ! [ $_skip_vagrant ]; then
     echo
     echoerror "vagrant missing. Install vagrant from https://vagrantup.com"
@@ -345,4 +361,6 @@ else
     echo "Created bootstrap script. As root, run: sh bootstrap.sh"
     echo ""
 fi
-
+# TODO: bootstrap script should return user to original directory when finished
+# TODO: script should clean up after itself? 
+# TODO: perhaps add a cleanup command line option
