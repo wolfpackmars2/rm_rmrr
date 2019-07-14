@@ -104,15 +104,15 @@ if ! [ \$(id -u) -eq 0 ]; then
     echo "Must be root"
     exit 1
 fi
-cd /root
-if [ -d /root/rmrmrr ]; then
+basedir=(pwd)
+if [ -d rmrmrr ]; then
     rm -rf rmrmrr
 fi
 mkdir rmrmrr
 cd rmrmrr
 echo "==== UPDATE OS ====================================="
 wget http://download.proxmox.com/debian/proxmox-ve-release-5.x.gpg -O /etc/apt/trusted.gpg.d/proxmox-ve-release-5.x.gpg
-echo "deb http://download.proxmox.com/debian/pve stretch pve-no-subscription" > /etc/apt/sources.list.d/pve-install-repo.list
+echo "deb http://download.proxmox.com/debian/pve buster pvetest" > /etc/apt/sources.list.d/pve-install-repo.list
 apt update
 DEBIAN_FRONTEND=noninteractive apt dist-upgrade -y
 echo "==== BUILD PKG LIST ====================================="
@@ -161,7 +161,7 @@ mv mirror_zfs upstream
 cd upstream/scripts
 rm -rf zfs-images
 git clone --depth=1 https://github.com/zfsonlinux/zfs-images
-cd /root/rmrmrr
+cd "\${basedir}"
 echo "==== CREATING PATCH FILE ============================================"
 search="return -EPERM;"
 targetfile="pve-kernel/submodules/ubuntu-disco/drivers/iommu/intel-iommu.c"
@@ -174,7 +174,7 @@ sed -i "s|--- \${targetfile}|--- a/drivers/iommu/intel-iommu.c|g" "\${patchfile}
 sed -i "s|+++ intel-iommu_new.c|+++ b/drivers/iommu/intel-iommu.c|g" "\${patchfile}"
 sed -i "s/{KREL}-pve/{krel}-pve-rmrmrr/g" pve-kernel/Makefile
 rm intel-iommu_new.c
-echo "cd into /root/rmrmrr/pve-kernel and run make"
+echo "cd into /root/rmrmrr/pve-kernel and run make -j"
 echo "==== BOOTSTRAP COMPLETE ========================================="
 exit 0
 EOM
@@ -284,8 +284,10 @@ __usage() {
 
           Options:
             -x | --no-vagrant     Skip Vagrant usage
+                                  This will create the bootstrap
+                                  script then exit.
 
-            
+
 EOT
 }
 
@@ -349,6 +351,5 @@ else
     echo "Created bootstrap script. As root, run: sh bootstrap.sh"
     echo ""
 fi
-# TODO: bootstrap script should return user to original directory when finished
 # TODO: script should clean up after itself? 
 # TODO: perhaps add a cleanup command line option
