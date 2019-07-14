@@ -104,7 +104,7 @@ if ! [ \$(id -u) -eq 0 ]; then
     echo "Must be root"
     exit 1
 fi
-basedir=(pwd)
+basedir=\$(pwd)
 if [ -d rmrmrr ]; then
     rm -rf rmrmrr
 fi
