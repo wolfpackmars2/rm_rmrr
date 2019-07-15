@@ -111,8 +111,50 @@ fi
 mkdir rmrmrr
 cd rmrmrr
 echo "==== UPDATE OS ====================================="
-wget http://download.proxmox.com/debian/proxmox-ve-release-5.x.gpg -O /etc/apt/trusted.gpg.d/proxmox-ve-release-5.x.gpg
-echo "deb http://download.proxmox.com/debian/pve buster pvetest" > /etc/apt/sources.list.d/pve-install-repo.list
+chk_locale()
+{
+    if (locale | grep "locale: Cannot set"); then
+        # locales are broken
+        if [ \$once -eq 1 ]; then exit 1
+        echo "en_US.UTF-8 UTF-8" >> /etc/locale.gen 
+        locale-gen
+        update-locale LANG=en_US.UTF-8 UTF-8
+        dpkg-reconfigure --frontend=noninteractive locales
+        once=1
+    else
+        once=0
+    fi
+}
+if [ \$once -eq 1 ]; then chk_locale
+chk_lsbrelease()
+{
+    if ! (command -v "lsb_release" > /dev/null 2>&1); then
+        if [ \$once -eq 1 ]; then exit 1
+        apt update
+        DEBIAN_FRONTEND=noninteractive apt install lsb-release -y
+        once=1
+    else
+        once=0
+    fi
+}
+if [ \$once -eq 1 ]; then chk_lsbrelease
+release=\$(lsb_release -cs)
+case $release in
+    buster)
+        gpg_key="proxmox-ve-release-6.x.gpg"
+        pve_repo="deb http://download.proxmox.com/debian/pve buster pvetest"
+        ;;
+    stretch)
+        gpg_key="proxmox-ve-release-5.x.gpg"
+        pve_repo="deb http://download.proxmox.com/debian/pve stretch pve-no-subscription"
+        ;;
+    *)
+        echo "Unsupported OS"
+        exit 1
+        ;;
+esac
+wget "http://download.proxmox.com/debian/\${gpg_key}" -O "/etc/apt/trusted.gpg.d/\${gpg_key}"
+echo "${pve_repo}" > /etc/apt/sources.list.d/pve-install-repo.list
 apt update
 DEBIAN_FRONTEND=noninteractive apt dist-upgrade -y
 echo "==== BUILD PKG LIST ====================================="
@@ -147,6 +189,7 @@ pkgs="libpve-common-perl \${pkgs}"
 echo "==== BEGIN APT PACKAGE INSTALL ====================================="
 DEBIAN_FRONTEND=noninteractive apt install -y \${pkgs}
 echo "==== GET SOURCES ====================================="
+# TODO: add support for building for Proxmox 5
 git clone --depth=1 git://git.proxmox.com/git/pve-kernel.git
 cd pve-kernel/submodules
 rm -rf ubuntu-disco
