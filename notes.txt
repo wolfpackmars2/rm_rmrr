@@ -1,0 +1,6 @@
+pct stop 101 && pct destroy 101 && pct create 101 local:vztmpl/debian-10.0-standard_10.0-1_amd64.tar.gz -storage local-lvm && pct start 101
+
+pct create 500 local:vztmpl/debian-10.0-standard_10.0-1_amd64.tar.gz -storage local-lvm -memory 4096 -net0 name=eth0,bridge=vmbr0,hwaddr=FA:4D:70:91:B8:6F,ip=dhcp,type=veth -hostname buildr -description "Temporary container for building updated PVE kernel" -cores 79 -rootfs 8
+
+
+
