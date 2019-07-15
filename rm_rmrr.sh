@@ -187,7 +187,7 @@ pkgs="debhelper \${pkgs}"
 pkgs="dh-python \${pkgs}"
 pkgs="libpve-common-perl \${pkgs}"
 echo "==== BEGIN APT PACKAGE INSTALL ====================================="
-DEBIAN_FRONTEND=noninteractive apt install -y "\${pkgs}"
+DEBIAN_FRONTEND=noninteractive apt install -y \${pkgs}
 echo "==== GET SOURCES ====================================="
 # TODO: add support for building for Proxmox 5
 git clone --depth=1 git://git.proxmox.com/git/pve-kernel.git
@@ -204,7 +204,7 @@ mv mirror_zfs upstream
 cd upstream/scripts || exit 4
 rm -rf zfs-images
 git clone --depth=1 https://github.com/zfsonlinux/zfs-images
-cd "\${basedir}" || exit 5
+cd "\${basedir}/rmrmrr" || exit 5
 echo "==== CREATING PATCH FILE ============================================"
 search="return -EPERM;"
 targetfile="pve-kernel/submodules/ubuntu-disco/drivers/iommu/intel-iommu.c"
