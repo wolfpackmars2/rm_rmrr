@@ -139,7 +139,7 @@ chk_lsbrelease()
 }
 if [ \$once -eq 1 ]; then chk_lsbrelease
 release=\$(lsb_release -cs)
-case $release in
+case \$release in
     buster)
         gpg_key="proxmox-ve-release-6.x.gpg"
         pve_repo="deb http://download.proxmox.com/debian/pve buster pvetest"
@@ -154,7 +154,7 @@ case $release in
         ;;
 esac
 wget "http://download.proxmox.com/debian/\${gpg_key}" -O "/etc/apt/trusted.gpg.d/\${gpg_key}"
-echo "${pve_repo}" > /etc/apt/sources.list.d/pve-install-repo.list
+echo "\${pve_repo}" > /etc/apt/sources.list.d/pve-install-repo.list
 apt update
 DEBIAN_FRONTEND=noninteractive apt dist-upgrade -y
 echo "==== BUILD PKG LIST ====================================="
