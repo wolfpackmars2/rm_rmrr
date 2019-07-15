@@ -100,7 +100,7 @@ mk_bootstrap_script()
 
     cat > "vagrant_bootstrap.sh" <<- EOM
 #!/bin/sh -
-if ! [ \$(id -u) -eq 0 ]; then
+if ! [ "\$(id -u)" -eq 0 ]; then
     echo "Must be root"
     exit 1
 fi
@@ -109,13 +109,13 @@ if [ -d rmrmrr ]; then
     rm -rf rmrmrr
 fi
 mkdir rmrmrr
-cd rmrmrr
+cd rmrmrr || exit 1
 echo "==== UPDATE OS ====================================="
 chk_locale()
 {
     if (locale | grep "locale: Cannot set"); then
         # locales are broken
-        if [ \$once -eq 1 ]; then exit 1
+        if [ "\$once" -eq 1 ]; then exit 1; fi
         echo "en_US.UTF-8 UTF-8" >> /etc/locale.gen 
         locale-gen
         update-locale LANG=en_US.UTF-8 UTF-8
@@ -125,11 +125,11 @@ chk_locale()
         once=0
     fi
 }
-if [ \$once -eq 1 ]; then chk_locale
+if [ \$once -eq 1 ]; then chk_locale; fi
 chk_lsbrelease()
 {
     if ! (command -v "lsb_release" > /dev/null 2>&1); then
-        if [ \$once -eq 1 ]; then exit 1
+        if [ \$once -eq 1 ]; then exit 1; fi
         apt update
         DEBIAN_FRONTEND=noninteractive apt install lsb-release -y
         once=1
@@ -137,7 +137,7 @@ chk_lsbrelease()
         once=0
     fi
 }
-if [ \$once -eq 1 ]; then chk_lsbrelease
+if [ \$once -eq 1 ]; then chk_lsbrelease; fi
 release=\$(lsb_release -cs)
 case \$release in
     buster)
@@ -187,28 +187,28 @@ pkgs="debhelper \${pkgs}"
 pkgs="dh-python \${pkgs}"
 pkgs="libpve-common-perl \${pkgs}"
 echo "==== BEGIN APT PACKAGE INSTALL ====================================="
-DEBIAN_FRONTEND=noninteractive apt install -y \${pkgs}
+DEBIAN_FRONTEND=noninteractive apt install -y "\${pkgs}"
 echo "==== GET SOURCES ====================================="
 # TODO: add support for building for Proxmox 5
 git clone --depth=1 git://git.proxmox.com/git/pve-kernel.git
-cd pve-kernel/submodules
+cd pve-kernel/submodules || exit 2
 rm -rf ubuntu-disco
 git clone --depth=1 git://git.proxmox.com/git/mirror_ubuntu-disco-kernel
 mv mirror_ubuntu-disco-kernel ubuntu-disco
 rm -rf zfsonlinux
 git clone --depth=1 git://git.proxmox.com/git/zfsonlinux
-cd zfsonlinux
+cd zfsonlinux || exit 3
 git clone --depth=1 git://git.proxmox.com/git/mirror_zfs
 rm -rf upstream
 mv mirror_zfs upstream
-cd upstream/scripts
+cd upstream/scripts || exit 4
 rm -rf zfs-images
 git clone --depth=1 https://github.com/zfsonlinux/zfs-images
-cd "\${basedir}"
+cd "\${basedir}" || exit 5
 echo "==== CREATING PATCH FILE ============================================"
 search="return -EPERM;"
 targetfile="pve-kernel/submodules/ubuntu-disco/drivers/iommu/intel-iommu.c"
-if (cat "\${targetfile}" | grep "\${search}"); then
+if (grep "\${search}" "\${targetfile}"); then
     sed "/\${search}/d" "\${targetfile}" > intel-iommu_new.c
 fi
 patchfile="pve-kernel/patches/kernel/9000-remove_rmrr_check.patch"
