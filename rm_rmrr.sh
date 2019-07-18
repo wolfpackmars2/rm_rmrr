@@ -373,7 +373,7 @@ if [ "$_skip_vm" -eq $BS_FALSE ]; then
         -hostname buildr -cores $CORES -rootfs 80 \
         -mp0 "$(pwd)/buildr,mp=/root/buildr,ro=$BS_FALSE" || ( echoerror \
         "failed to create container" && exit 1 )
-    pct start $_LXC_ID || ( echoerror / "failed to start container ${_LXC_ID}" && exit 1 )
+    pct start $_LXC_ID || ( echoerror "failed to start container ${_LXC_ID}" && exit 1 )
     vcmd="sudo sh /vagrant/vagrant_bootstrap.sh"
     echo "Vagrant Bootstrap Command: ${vcmd}"
     #vagrant ssh "${VM_NAME}" -- -q -t "${vcmd}" || echo "Vagrant command failed"
