@@ -367,11 +367,11 @@ if [ "$_skip_vm" -eq $BS_FALSE ]; then
         echo "VM ID ${_LXC_ID} exists. Specify a different ID with the -i option or override with option -f."
         exit 1
     fi
-    pct create $_LXC_ID "${_CONTAINER_TEMPLATE}" /
-        -storage local-lvm -memory 4096 /
-        -net0 name=eth0,bridge=vmbr0,hwaddr=FA:4D:70:91:B8:6F,ip=dhcp,type=veth /
-        -hostname buildr -cores $CORES -rootfs 80 /
-        -mp0 "$(pwd)/buildr:mp=/root/buildr,ro=$BS_FALSE" || ( echoerror /
+    pct create $_LXC_ID "${_CONTAINER_TEMPLATE}" \
+        -storage local-lvm -memory 4096 \
+        -net0 name=eth0,bridge=vmbr0,hwaddr=FA:4D:70:91:B8:6F,ip=dhcp,type=veth \
+        -hostname buildr -cores $CORES -rootfs 80 \
+        -mp0 "$(pwd)/buildr,mp=/root/buildr,ro=$BS_FALSE" || ( echoerror \
         "failed to create container" && exit 1 )
     pct start $_LXC_ID || ( echoerror / "failed to start container ${_LXC_ID}" && exit 1 )
     vcmd="sudo sh /vagrant/vagrant_bootstrap.sh"
