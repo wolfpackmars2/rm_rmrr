@@ -22,16 +22,12 @@ set -o nounset                              # Treat unset variables as an error
 
 __ScriptName="rm_rmrr.sh"
 
-_OPTIONS="xifc"
+_OPTIONS="x"
 _LONGOPTIONS="no-vagrant"
 CORES=$(grep -c ^processor /proc/cpuinfo)
-CORES=$((CORES - 4))
-if [ "${CORES}" -lt 1 ]; then
-    CORES=1
-fi
+CORES=$((CORES - 2))
 VM_NAME="RMRMRR"
-_LXC_ID=500
-_CONTAINER_TEMPLATE="local:vztmpl/debian-10.0-standard_10.0-1_amd64.tar.gz"
+_VAGRANT_VM_BOX="bento/debian-9.6"
 _VAGRANTFILE_DIR=$(pwd)
 
 # Bootstrap script truth values
@@ -61,13 +57,48 @@ getram()
 }
 
 #---  FUNCTION  -------------------------------------------------------------------------------------------------------
+#         NAME:  mk_vagrantfile
+#  DESCRIPTION:  Write Vagrantfile.
+#----------------------------------------------------------------------------------------------------------------------
+mk_vagrantfile()
+{
+    cat > "${_VAGRANTFILE_DIR}/Vagrantfile" <<- EOM
+# -*- mode: ruby -*-
+# vi: set ft=ruby :
+
+version = "2019.07.09-001"
+
+private_network = "192.168.55"
+vm_ip = 201
+vm_hostnames = ["${VM_NAME}"]
+vm_ram = $VM_MEM
+vm_cpus = $CORES
+vm_vagbox = "${_VAGRANT_VM_BOX}"
+
+Vagrant.configure("2") do |config|
+  (0..vm_hostnames.length - 1).each do |i|
+    config.vm.define vm_hostnames[i] do |mk|
+      mk.vm.provider "virtualbox" do |vb|
+        vb.memory = vm_ram
+        vb.cpus = vm_cpus
+      end
+      mk.vm.box = vm_vagbox
+      mk.vm.synced_folder '.', '/vagrant', SharedFoldersEnableSymlinksCreate: false
+      mk.vm.network "private_network", ip: private_network + "." + (vm_ip + i).to_s
+    end
+  end
+end
+EOM
+}
+
+#---  FUNCTION  -------------------------------------------------------------------------------------------------------
 #         NAME:  mk_bootstrap_script
 #  DESCRIPTION:  Creates script to bootstrap the vagrant VM
 #----------------------------------------------------------------------------------------------------------------------
 mk_bootstrap_script()
 {
 
-    cat > "buildr/bootstrap.sh" <<- EOM
+    cat > "vagrant_bootstrap.sh" <<- EOM
 #!/bin/sh -
 if ! [ "\$(id -u)" -eq 0 ]; then
     echo "Must be root"
@@ -190,6 +221,9 @@ echo "cd into /root/rmrmrr/pve-kernel and run make -j"
 echo "==== BOOTSTRAP COMPLETE ========================================="
 exit 0
 EOM
+    if [ "$_skip_vm" -eq $BS_TRUE ]; then
+        mv vagrant_bootstrap.sh bootstrap.sh
+    fi
 }
 
 #---  FUNCTION  -------------------------------------------------------------------------------------------------------
@@ -265,6 +299,24 @@ realpath() {
 }
 
 #---  FUNCTION  -------------------------------------------------------------------------------------------------------
+#         NAME:  vagrant_box
+#  DESCRIPTION:  Checks that the vagrant box we want is available and up to date.
+#----------------------------------------------------------------------------------------------------------------------
+vagrant_box()
+{
+    if ! (vagrant box list | grep "${_VAGRANT_VM_BOX}"); then
+        if ! (vagrant box add "${_VAGRANT_VM_BOX}"); then
+            echoerror "Unable to load vagrant box ${_VAGRANT_VM_BOX}. Cannot continue."
+            exit 1
+        fi
+    else
+        if ! (vagrant box update --box "${_VAGRANT_VM_BOX}"); then
+            echowarn "Unable to update vagrant box ${_VAGRANT_VM_BOX}. Continuing without update..."
+        fi
+    fi
+}
+
+#---  FUNCTION  -------------------------------------------------------------------------------------------------------
 #         NAME:  __usage
 #  DESCRIPTION:  Display usage information.
 #----------------------------------------------------------------------------------------------------------------------
@@ -277,10 +329,6 @@ __usage() {
             -x | --no-vagrant     Skip Vagrant usage
                                   This will create the bootstrap
                                   script then exit.
-            -i <id>               Specify Virtual Machine ID. Default 500.
-            -f                    Force overwrite existing VM <id>
-            -c                    Create working directory. Overwrite if exists.
-
 
 
 EOT
@@ -290,8 +338,6 @@ EOT
 #  Handle command line arguments
 #----------------------------------------------------------------------------------------------------------------------
 _skip_vm=$BS_FALSE
-force_override=$BS_FALSE
-_make_workdir=$BS_FALSE
 
 _parsed=$(getopt --options=${_OPTIONS} --longoptions=${_LONGOPTIONS} --name "$0" -- "$@")
 eval set -- "$_parsed"
@@ -300,19 +346,6 @@ while true; do
     case "$1" in
         -x|--no-vagrant)
             _skip_vm=$BS_TRUE
-            shift
-            ;;
-        -i)
-            shift
-            _LXC_ID=$1
-            shift
-            ;;
-        -f)
-            force_override=$BS_TRUE
-            shift
-            ;;
-        -c)
-            _make_workdir=$BS_TRUE
             shift
             ;;
         --)
@@ -351,33 +384,21 @@ if [ "$_skip_vm" -eq $BS_FALSE ]; then
     getram
     echo "VM RAM: ${VM_MEM}"
     echo "VM CPU: ${CORES}"
-    if [ -d buildr ] && [ $_make_workdir ]; then
-        echo "$(pwd)/buildr exists. Using existing directory. Use option -c to override this behavior."
-    else
-        if [ -d buildr ]; then
-            rm -rf buildr
-        fi
-        mkdir buildr
-    fi
+    mkdir buildr
     chmod o+rw buildr
-    if (pct status $_LXC_ID) && [ $force_override -eq $BS_TRUE ]; then
-        pct destroy $_LXC_ID
-    fi
-    if (pct status $_LXC_ID); then
-        echo "VM ID ${_LXC_ID} exists. Specify a different ID with the -i option or override with option -f."
-        exit 1
-    fi
-    pct create $_LXC_ID "${_CONTAINER_TEMPLATE}" /
+    pct create 500 local:vztmpl/debian-10.0-standard_10.0-1_amd64.tar.gz /
         -storage local-lvm -memory 4096 /
         -net0 name=eth0,bridge=vmbr0,hwaddr=FA:4D:70:91:B8:6F,ip=dhcp,type=veth /
         -hostname buildr -cores $CORES -rootfs 80 /
         -mp0 "$(pwd)/buildr:mp=/root/buildr,ro=$BS_FALSE" || ( echoerror /
         "failed to create container" && exit 1 )
-    pct start $_LXC_ID || ( echoerror / "failed to start container ${_LXC_ID}" && exit 1 )
+    pct start 500 || ( echoerror / "failed to start container" && exit 1 )
+    vagrant_box
+    mk_vagrantfile
+    vagrant up || ( echoerror "vagrant up failed" && exit 1 )
     vcmd="sudo sh /vagrant/vagrant_bootstrap.sh"
     echo "Vagrant Bootstrap Command: ${vcmd}"
-    #vagrant ssh "${VM_NAME}" -- -q -t "${vcmd}" || echo "Vagrant command failed"
-    #TODO create and run build script
+    vagrant ssh "${VM_NAME}" -- -q -t "${vcmd}" || echo "Vagrant command failed"
 else
     echo "Created bootstrap script. As root, run: sh bootstrap.sh"
     echo ""
