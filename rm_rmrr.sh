@@ -3,13 +3,12 @@
 # vim: softtabstop=4 shiftwidth=4 expandtab fenc=utf-8 spell spelllang=en cc=120
 #======================================================================================================================
 #
-#          FILE: pve-rm_rmrr.sh
+#          FILE: rm_rmrr.sh
 #
 #   DESCRIPTION: Create RMRR patch for latest PVE (Proxmox) kernel
 #                Min Requirements: CPU Cores >= 4; 4GiB RAM
 #                Rec Requirements: Quad Core CPU with HT or better; 16GiB RAM or greater
-#                OS: Mac or Linux
-#                Requires Oracle Virtualbox and Hashicorp Vagrant
+#                OS: Proxmox 
 #
 #          BUGS: github.com/wolfpackmars2
 #
@@ -21,6 +20,7 @@
 set -o nounset                              # Treat unset variables as an error
 
 __ScriptName="rm_rmrr.sh"
+__Version="2019.07.30"
 
 _OPTIONS="xifc"
 _LONGOPTIONS="no-vagrant"
