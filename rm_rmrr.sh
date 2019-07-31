@@ -80,6 +80,7 @@ fi
 mkdir rmrmrr
 cd rmrmrr || exit 1
 echo "==== UPDATE OS ====================================="
+once=0
 chk_locale()
 {
     if (locale 2>&1 | grep "locale: Cannot set"); then
@@ -97,6 +98,7 @@ chk_locale()
 chk_locale
 if [ \$once -eq 1 ]; then chk_locale; fi
 if [ \$once -eq 1 ]; then (echo "Unable to set locale." && exit 1); fi
+once=0
 chk_lsbrelease()
 {
     if ! (command -v "lsb_release" > /dev/null 2>&1); then
@@ -115,7 +117,7 @@ release=\$(lsb_release -cs)
 case \$release in
     buster)
         gpg_key="proxmox-ve-release-6.x.gpg"
-        pve_repo="deb http://download.proxmox.com/debian/pve buster pvetest"
+        pve_repo="deb http://download.proxmox.com/debian/pve buster pve-no-subscription"
         ;;
     stretch)
         gpg_key="proxmox-ve-release-5.x.gpg"
@@ -284,6 +286,7 @@ __usage() {
             -i <id>               Specify Virtual Machine ID. Default 500.
             -f                    Force overwrite existing VM <id>
             -c                    Create working directory. Overwrite if exists.
+            -b <id>               Specify Bridge to connect to. Default 0 (vmbr0)
 
 
 
@@ -296,6 +299,7 @@ EOT
 _skip_vm=$BS_FALSE
 force_override=$BS_FALSE
 _make_workdir=$BS_FALSE
+_vmbr=0
 
 _parsed=$(getopt --options=${_OPTIONS} --longoptions=${_LONGOPTIONS} --name "$0" -- "$@")
 eval set -- "$_parsed"
@@ -309,6 +313,11 @@ while true; do
         -i)
             shift
             _LXC_ID=$1
+            shift
+            ;;
+        -b)
+            shift
+            _vmbr=$1
             shift
             ;;
         -f)
@@ -373,7 +382,7 @@ if [ "$_skip_vm" -eq $BS_FALSE ]; then
     fi
     pct create $_LXC_ID "${_CONTAINER_TEMPLATE}" \
         -storage local-lvm -memory 4096 \
-        -net0 name=eth0,bridge=vmbr0,hwaddr=FA:4D:70:91:B8:6F,ip=dhcp,type=veth \
+        -net0 "name=eth0,bridge=vmbr${_vmbr},hwaddr=FA:4D:70:91:B8:6F,ip=dhcp,type=veth" \
         -hostname buildr -cores $CORES -rootfs 80 \
         -mp0 "$(pwd)/buildr,mp=/root/buildr,ro=$BS_FALSE" || ( echoerror \
         "failed to create container" && exit 1 )
