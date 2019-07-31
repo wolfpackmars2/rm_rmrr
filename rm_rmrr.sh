@@ -22,7 +22,6 @@ set -o nounset                              # Treat unset variables as an error
 __ScriptName="rm_rmrr.sh"
 __Version="2019.07.30"
 
-_OPTIONS="xifc"
 _LONGOPTIONS="no-vagrant"
 CORES=$(grep -c ^processor /proc/cpuinfo)
 CORES=$((CORES - 4))
@@ -301,6 +300,7 @@ force_override=$BS_FALSE
 _make_workdir=$BS_FALSE
 _vmbr=0
 
+_OPTIONS="bxifc"
 _parsed=$(getopt --options=${_OPTIONS} --longoptions=${_LONGOPTIONS} --name "$0" -- "$@")
 eval set -- "$_parsed"
 
