@@ -300,7 +300,7 @@ force_override=$BS_FALSE
 _make_workdir=$BS_FALSE
 _vmbr=0
 
-_OPTIONS="bxifc"
+_OPTIONS="b:xifc"
 _parsed=$(getopt --options=${_OPTIONS} --longoptions=${_LONGOPTIONS} --name "$0" -- "$@")
 eval set -- "$_parsed"
 
