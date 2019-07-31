@@ -82,7 +82,7 @@ cd rmrmrr || exit 1
 echo "==== UPDATE OS ====================================="
 chk_locale()
 {
-    if (locale | grep "locale: Cannot set"); then
+    if (locale 2>&1 | grep "locale: Cannot set"); then
         # locales are broken
         if [ "\$once" -eq 1 ]; then exit 1; fi
         echo "en_US.UTF-8 UTF-8" >> /etc/locale.gen 
@@ -94,7 +94,9 @@ chk_locale()
         once=0
     fi
 }
+chk_locale
 if [ \$once -eq 1 ]; then chk_locale; fi
+if [ \$once -eq 1 ]; then (echo "Unable to set locale." && exit 1); fi
 chk_lsbrelease()
 {
     if ! (command -v "lsb_release" > /dev/null 2>&1); then
@@ -106,7 +108,9 @@ chk_lsbrelease()
         once=0
     fi
 }
+chk_lsbrelease
 if [ \$once -eq 1 ]; then chk_lsbrelease; fi
+if [ \$once -eq 1 ]; then (echo "Unable to install lsb_release" && exit 1); fi
 release=\$(lsb_release -cs)
 case \$release in
     buster)
