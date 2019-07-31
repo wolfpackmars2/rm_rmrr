@@ -365,7 +365,7 @@ if [ "$_skip_vm" -eq $BS_FALSE ]; then
     fi
     chmod o+rw buildr
     if (pct status $_LXC_ID) && [ $force_override -eq $BS_TRUE ]; then
-        pct destroy $_LXC_ID
+        pct destroy $_LXC_ID || ( pct stop $_LXC_ID && pct destroy $_LXC_ID ) || echoerror "Unable to destroy LXC $_LXC_ID"
     fi
     if (pct status $_LXC_ID); then
         echo "VM ID ${_LXC_ID} exists. Specify a different ID with the -i option or override with option -f."
