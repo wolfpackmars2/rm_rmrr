@@ -63,6 +63,15 @@ getram()
 #         NAME:  mk_bootstrap_script
 #  DESCRIPTION:  Creates script to bootstrap the vagrant VM
 #----------------------------------------------------------------------------------------------------------------------
+mk_vm()
+{
+    # create a vm
+}
+
+#---  FUNCTION  -------------------------------------------------------------------------------------------------------
+#         NAME:  mk_bootstrap_script
+#  DESCRIPTION:  Creates script to bootstrap the vagrant VM
+#----------------------------------------------------------------------------------------------------------------------
 mk_bootstrap_script()
 {
 
