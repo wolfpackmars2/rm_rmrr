@@ -383,7 +383,8 @@ if [ "$_skip_vm" -eq $BS_FALSE ]; then
     fi
     chmod o+rw buildr
     if (pct status $_LXC_ID) && [ $force_override -eq $BS_TRUE ]; then
-        pct destroy $_LXC_ID || ( pct stop $_LXC_ID && pct destroy $_LXC_ID ) || echoerror "Unable to destroy LXC $_LXC_ID"
+        pct destroy $_LXC_ID || ( pct stop $_LXC_ID && pct destroy $_LXC_ID ) || ( echoerror \
+            "Unable to destroy LXC $_LXC_ID" && exit 1 )
     fi
     if (pct status $_LXC_ID); then
         echo "VM ID ${_LXC_ID} exists. Specify a different ID with the -i option or override with option -f."
@@ -396,10 +397,7 @@ if [ "$_skip_vm" -eq $BS_FALSE ]; then
         -mp0 "$(pwd)/buildr,mp=/root/buildr,ro=$BS_FALSE" || ( echoerror \
         "failed to create container" && exit 1 )
     pct start $_LXC_ID || ( echoerror "failed to start container ${_LXC_ID}" && exit 1 )
-    vcmd="sudo sh /vagrant/vagrant_bootstrap.sh"
-    echo "Vagrant Bootstrap Command: ${vcmd}"
-    #vagrant ssh "${VM_NAME}" -- -q -t "${vcmd}" || echo "Vagrant command failed"
-    #TODO create and run build script
+    #TODO run build script
 else
     echo "Created bootstrap script. As root, run: sh bootstrap.sh"
     echo ""
