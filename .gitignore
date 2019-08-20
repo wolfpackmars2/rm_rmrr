@@ -4,3 +4,5 @@ vagrant_bootstrap.sh
 .vagrant
 *~
 .*~
+test.sh
+__pycache__
