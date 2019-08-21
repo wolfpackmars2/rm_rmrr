@@ -6,3 +6,4 @@ vagrant_bootstrap.sh
 .*~
 test.sh
 __pycache__
+.*.swp
