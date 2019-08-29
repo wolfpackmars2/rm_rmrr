@@ -2,7 +2,7 @@
 #==============================================================================
 # vim: softtabstop=4 shiftwidth=4 expandtab fenc=utf-8 cc=80 nu
 #==============================================================================
-import argparse, multiprocessing, os, sys, subprocess
+import argparse, multiprocessing, os, sys, subprocess, pdb
 from shlex import split
 from distutils.version import LooseVersion
 
@@ -276,53 +276,232 @@ class kernels:
             if self.available[pkg].installed:
                 self.installed.append(pkg)
 
+class lxc:
+
+    def __repr__(self):
+        return str(self.__dict__)
+
+    def __str__(self):
+        ret = ""
+        d = self.__dict__
+        maxl = len(max(d.keys())) + 4
+        for x in d:
+            ret = ret + "{}: {}\n".format(str(x).rjust(maxl), str(d[x]))
+        return ret.strip()
+
+    def __init__(self, lxc_id=500, shared_dir="shared", cores=None, ram=None,
+                 bridge_id=0, template="debian-10", storage="local-lvm"):
+        self.id = lxc_id
+        self.shared_dir = os.path.abspath(shared_dir)
+        self.cores = cores
+        self.ram = ram
+        if self.cores is None:
+            c = multiprocessing.cpu_count()
+            if c > 10:
+                self.cores = c - 4
+            elif c > 2:
+                self.cores = c - 2
+            else:
+                self.cores = c
+        if self.ram is None:
+            cmd = split('free -t -m')
+            res = subprocess.run(cmd, capture_output=True, text=True)
+            if res.returncode == 0:
+                r = int(res.stdout.splitlines()[-1].split()[3]) // 1024
+            else:
+                r = 4
+            if r > 8:
+                self.ram = 6
+                if self.cores > 80:
+                    self.cores = 80 #6GiB tested with up to 80 cores
+            else:
+                self.ram = 4
+                if self.cores > 10:
+                    self.cores = 8 #limit cores due to low ram
+        self.bridge_id = bridge_id
+        #pp.dp("lxc: {}".format(str(self.__dict__)))
+
+def sp_run(cmd, capture_output=True, timeout=None,
+        check=False, encoding=None, text=True, **kwargs):
+    if type(cmd) is str:
+        cmd = split(cmd)
+    pp.dp("cmd: {}".format(cmd))
+    return subprocess.run(cmd, capture_output=capture_output,
+                          timeout=timeout, check=check, encoding=encoding,
+                          text=text, **kwargs)
 
 def header(pp):
     pp.p("Script Version: {}".format(__VERSION))
     pp.p("Template Version: {}".format(__TEMPLATE_VERSION))
     pp.p("-------------------------------------------\n")
 
-def get_template():
-    subprocess.run(split('pveam update'))
-    cmd = split('pveam available -section system')
-    pp.dp("cmd: {}".format(cmd))
-    res = subprocess.run(cmd, capture_output=True,
-                         text=True).stdout.splitlines()
-    _AVAIL = []
-    for tmpl in res:
-        tmpl = tmpl.rpartition(" ")[2].strip()
-        if __TSEARCH in tmpl:
-            _AVAIL.append(tmpl)
-    if len(_AVAIL) == 0:
-        sys.exit("Unable to get list of available system templates.")
-    _AVAIL.sort(key=LooseVersion, reverse=True)
-    pp.p("Downloading template: {}".format(_AVAIL[0]))
-    cmd = split('pveam download local {}'.format(_AVAIL[0]))
-    pp.dp("cmd: {}".format(cmd))
-    res = subprocess.run(cmd, capture_output=True, text=True)
-    pp.dp("res: {}".format(res))
-    pp.dp("_AVAIL[0]: {}".format(_AVAIL[0]))
-
+def get_template(name='debian-10', update=False, storage=None):
+    pp.dp("get_template.name: {}".format(name))
+    pp.dp("get_template.update: {}".format(update))
+    pp.dp("get_template.storage: {}".format(storage))
+    d = {}
+    d['search'] = name.lower()
+    d['name'] = ""
+    d['storage'] = None
+    d['fullname'] = "local:vztmpl/debian-10.0-standard_10.0-1_amd64.tar.gz"
+    # get list of template storage
+    #cmd = split('pvesm status -content vztmpl')
+    res = sp_run('pvesm status -content vztmpl').stdout.partition("\n")[2]
+    if storage is None:
+        d['storage'] = res.splitlines()[0].split()[0]
+    else:
+        for x in res.splitlines():
+            x = x.split()[0]
+            if storage == x:
+                d['storage'] = x
+                break
+    if d['storage'] is None:
+        d['storage'] = 'local'
+    res = sp_run('pveam list {}'.format(d['storage']))
+    res = res.stdout.partition("\n")[2]
+    if d['search'] in res:
+        res_list = []
+        for x in res.splitlines():
+            if d['search'] in x.lower():
+                res_list.append(x.split()[0])
+        if len(res_list) > 0:
+            res_list.sort(key=LooseVersion, reverse=True)
+            d['fullname'] = res_list[0]
+            d['storage'] = d['fullname'].partition(":")[0]
+            d['name'] = d['fullname'].rpartition("/")[2]
+        else:
+            update = True
+    else:
+        update = True
+    if update:
+        subprocess.run(split('pveam update'))
+        cmd = split('pveam available -section system')
+        pp.dp("cmd: {}".format(cmd))
+        res = subprocess.run(cmd, capture_output=True,
+                             text=True).stdout.splitlines()
+        _AVAIL = []
+        for tmpl in res:
+            tmpl = tmpl.rpartition(" ")[2].strip().lower()
+            if name in tmpl:
+                _AVAIL.append(tmpl)
+        if len(_AVAIL) > 0:
+            # check if update required
+            _AVAIL.sort(key=LooseVersion, reverse=True)
+        pp.p("Downloading template: {}".format(_AVAIL[0]))
+        cmd = split('pveam download local {}'.format(_AVAIL[0]))
+        pp.dp("cmd: {}".format(cmd))
+        res = subprocess.run(cmd, capture_output=True, text=True)
+        pp.dp("res: {}".format(res))
+        pp.dp("_AVAIL[0]: {}".format(_AVAIL[0]))
     cmd = split('pveam list local')
     pp.dp("cmd: {}".format(cmd))
     res = subprocess.run(cmd, capture_output=True,
                          text=True).stdout.splitlines()[1:]
     pp.dp("res: {}".format(res))
-    _AVAIL={}
+    _AVAIL=[]
     for x in res:
         pp.dp("x: {}".format(x))
         if __TSEARCH in x:
-            x = x.partition(" ")[0].partition(":")[2]
+            x = x.split()[0]
             pp.dp("x: {}".format(x))
-            _AVAIL[x.partition("/")[2]] = x
+            #_AVAIL[x.partition("/")[2]] = x
+            _AVAIL.append(x)
             pp.dp("_AVAIL: {}\n".format(_AVAIL))
     pp.dp("_AVAIL Final: {}\n".format(_AVAIL))
-    x = list(_AVAIL.keys())
-    x.sort(key=LooseVersion, reverse=True)
-    x = x[0]
-    pp.dp("template: {}".format(x))
-    pp.dp("template: {}".format(_AVAIL[x]))
-    return {x: _AVAIL[x]}
+    _AVAIL.sort(key=LooseVersion, reverse=True)
+    pp.dp("template: {}".format(_AVAIL[0]))
+    return _AVAIL[0]
+
+def write_bootstrap_scripts():
+    script=("#!/bin/sh -\n"
+            "if ! [ \"$(id -u)\" -eq 0 ]; then\n"
+            "    echo Must be root" + "\n"
+            "    exit 1" + "\n"
+            "fi" + "\n"
+            "workdir=$(pwd -P)" + "\n"
+            "# Check Locale" + "\n"
+            "if (locale 2>&1 | grep \"locale: Cannot set\"); then" + "\n"
+            "    echo \"Fixing Locales\"" + "\n"
+            "    echo \"en_US.UTF-8 UTF-8\" >> /etc/locale.gen" + "\n"
+            "    locale-gen" + "\n"
+            "    update-locale LANG=en_US.UTF-8 UTF-8" + "\n"
+            "    dpkg-reconfigure --frontend=noninteractive locales" + "\n"
+            "fi" + "\n"
+            "# Install lsbrelease" + "\n"
+            "if ! (command -v \"lsb_release\" > /dev/null 2>&1); then" + "\n"
+            "    apt update" + "\n"
+            "    apt install lsb-release -y --frontend=noninteractive" + "\n"
+            "fi" + "\n"
+            "# Check repos" + "\n"
+            "gpg_key=\"proxmox-ve-release-6.x.gpg\"" + "\n"
+            "pve_repo=\"deb http://download.proxmox.com/debian/pve buster "
+            "pve-no-subscription\"" + "\n"
+            "wget \"http://download.proxmox.com/debian/$gpg_key\" -O " 
+            "\"/etc/apt/trusted.gpg.d/$gpg_key\"" + "\n"
+            "echo \"$pve_repo\" > /etc/apt/sources.list.d/pve.list" + "\n"
+            "apt-get update || (echo \"Something went wrong\" && exit 1)"
+            "\n" + "echo \"Installing apt updates\""
+            "\n" + "apt-get dist-upgrade -y --frontend=noninteractive"
+            "\n" + "pkgs=\"build-essential\""
+            "\n" + "pkgs=\"$pkgs patch\""
+            "\n" + "pkgs=\"$pkgs debhelper\""
+            "\n" + "pkgs=\"$pkgs libpve-common-perl\""
+            "\n" + "pkgs=\"$pkgs pve-kernel-5.0\""
+            "\n" + "pkgs=\"$pkgs pve-doc-generator\""
+            "\n" + "pkgs=\"$pkgs git\""
+            #"\n" + "pkgs=\"$pkgs \""
+            "\n" + "DEBIAN_FRONTEND=noninteractive apt-get install -y $pkgs"
+            "\n" + "if ! [ -d \"${workdir}/build\" ]; then"
+            "\n" + "    mkdir -p \"${workdir}/build\""
+            "\n" + "fi"
+            "\n" + "cd \"${workdir}/build\""
+            #"\n" + "if ! [ -d \"kernel\" ]; then (mkdir \"kernel\"); fi"
+            #"\n" + "cd kernel"
+            "\n" + "git clone git://git.proxmox.com/git/pve-kernel.git"
+            "\n" + ""
+            "\n" + ""
+            "\n" + ""
+            "\n" + "")
+    pdb.set_trace()
+    pp.dp("script: {}".format(script))
+    return script
+
+def create_lxc(cont, tmpl, storage='local-lvm'):
+    pp.dp("f: create_lxc")
+    cmd = ("pct create {id} \"{tmpl}\" -storage {storage} -memory {ram} "
+           "-net0 \"name=eth0,bridge=vmbr{bridge},hwaddr=FA:4D:70:91:B8:6F,"
+           "ip=dhcp,type=veth\" -hostname buildr -cores {cores} -rootfs 80 "
+           "-mp0 \"{share},mp=/root/shared,ro=0\"")
+    cmd = cmd.format(id = cont.id,
+                     tmpl = tmpl,
+                     storage = storage,
+                     ram = cont.ram * 1024,
+                     bridge = cont.bridge_id,
+                     cores = cont.cores,
+                     share = cont.shared_dir)
+    #cmd = cmd.format(id=cont.id, tmpl=tmpl, storage=storage, ram=cont.ram,
+    #                 bridge=cont.bridge_id, cores=cont.cores,
+    #                 share=cont.shared_dir)
+    if os.path.exists(cont.shared_dir):
+        #shared_dir object already exists. is it a directory?
+        if not os.path.isdir(cont.shared_dir):
+            # shared_dir object exists but is not a directory. stop
+            return False
+        # shared directory exists, overwrite?
+    else:
+        #shared_dir doesn't exist, create it
+        os.makedirs(cont.shared_dir)
+    pp.dp("cmd: {}".format(cmd))
+    cmd = split(cmd)
+    pp.dp("cmd: {}".format(cmd))
+    pp.p("Created LXC {}".format(cont.id))
+    #pdb.set_trace()
+    res = sp_run(cmd)
+    if res.returncode == 0:
+        pp.dp("LXC Create result: {}".format(res.stdout))
+        return True
+    pp.dp("LXC Create error: {}".format(res.stderr))
+    return False
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Setup build environment for\
@@ -386,5 +565,21 @@ if __name__ == "__main__":
     #pp.dp(pp.supports_color())
     tmpl = get_template()
     pp.dp("tmpl: {}".format(tmpl))
+    cont = lxc(lxc_id=args.id, shared_dir=args.share)
+    pp.dp("cont: {}".format(cont))
+    if create_lxc(cont, tmpl):
+        cmd = split('pct start {}'.format(cont.id))
+        res = sp_run(cmd)
+        pp.dp("cmd output: {}".format(res))
+    script = write_bootstrap_scripts()
+    with open(cont.shared_dir + '/bootstrap.sh', "w") as script_file:
+        script_file.write(script)
+    # a file exists in the pve kernel package which specifies the git id
+    # the package was built against
+    # next step is to figure out which build was used and git checkout
+    # that build.
+    # after that, determine which sub-projects to download
+    # after that, determine which packages still need to be installed
+    # after that, make! profit :)
     sys.exit()
 
