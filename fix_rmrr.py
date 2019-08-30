@@ -98,7 +98,7 @@ class kernel:
 
     def __init__(self, pkg=None, hdr=None, version=None, git_url=None,
                  git_hash=None, installed=False, upgradable=False,
-                 customized=False):
+                 customized=False, selected=False):
         self.pkg = pkg
         self.hdr = hdr
         self.version = version
@@ -109,6 +109,243 @@ class kernel:
         self.installed_version = None
         self.git_url = git_url
         self.git_hash = git_hash
+        self._selected = selected
+        self._source = None
+        self._policy = None
+        self._installed = None
+        self._installed_version = None
+        self._versions = None
+        self._available = None
+        self._exists = None
+        self._update_apt = None
+        self._git_hash = None
+        self._git_url = None
+        self._customized = None
+        self._active = None
+        self._upgradable = None
+
+    @property
+    def update_apt(self, refresh=False):
+        """Updates apt. Returns True on success."""
+        if not self._update_apt is None and not refresh:
+            return self._update_apt
+        self._update_apt = None
+        cmd = split("apt-get update")
+        res = sp_run(cmd)
+        # Update policy and exists
+        self.exists(refresh=True)
+        self.policy(refresh=True)
+        if res.returncode == 0:
+            return True
+        else:
+            return False
+
+    @property
+    def exists(self, refresh=False):
+        """Return True if the package exists, otherwise False
+        Uses apt-cache policy to determine if the package exists"""
+        if not self._exists is None and not refresh:
+            return self._exists
+        cmd = split("apt-cache policy {}".format(self.pkg))
+        res = sp_run(cmd)
+        self._exists = False
+        if len(res.stdout.strip()) > 0:
+            self._exists True
+        return self._exists
+
+    @property
+    def policy(self, refresh=False):
+        """Get the output from apt-cache policy
+        Returns None if the package information isn't available
+        Otherwise returns the text from apt-cache stdout"""
+        # cached result?
+        if not self._policy is None and not refresh:
+            return self._policy
+        self._policy = None
+        if not self.exists():
+            return None
+        cmd = ("apt-cache policy {}".format(self.pkg))
+        res = sp_run(cmd)
+        if res.returncode == 0:
+            self._policy = res.stdout
+        return self._policy
+
+    @property
+    def installed(self, refresh=False):
+        """Get installed version of the kernel package
+        Returns None if the package doesn't exist
+        Returns False if the package isn't installed
+        Otherwise, returns the installed version"""
+        # has result been cached?
+        if not self._installed is None and not refresh:
+            return self._installed
+        self._installed = None
+        if not self.exists:
+            return None
+        pol = self.policy()
+        if pol is None:
+            return None
+        pol = pol.splitlines()
+        for x in pol:
+            if "Installed: " in x:
+                self._installed = x.strip().split()[1]
+                break
+        if "none" in self._installed:
+            self._installed = False
+        return self._installed
+
+    @property
+    def versions(self, refresh=False):
+        """Return list of known versions"""
+        # has result been cached?
+        if not self._versions is None and not refresh:
+            return self._versions
+        if not self.exists:
+            return None
+        # default value
+        self._versions = []
+        pol = self.policy
+        if pol is None:
+            return None
+        pol = pol.replace('***', '   ').splitlines()
+        for x in pol:
+            x = x.strip()
+            if x == "" or x is None:
+                # don't process blank lines
+                continue
+            if not "/" in x and not ":" in x:
+                # don't process lines with '/' or ':'
+                self._versions.append(x.split()[0])
+        if len(self._versions) == 0:
+            self._versions = None
+        return self._versions
+
+    @property
+    def available(self, refresh=False):
+        """Return highest version available. Returns None if package doesn't
+        exist."""
+        if not self._available is None and not refresh:
+            return self._available
+        self._available = None
+        if not self.exists:
+            return None
+        pol = self.policy()
+        if pol is None:
+            return None
+        pol = pol.splitlines()
+        for x in pol:
+            if "Candidate: " in x:
+                self._available = x.strip().split()[1]
+                break
+        return self._available
+
+    @property
+    def selected(self):
+        """Flag to denote whether this package is selected for action."""
+        return self._selected
+
+    @property
+    def source(self, refresh=False):
+        """Get contents of SOURCE file, which points to the specific source
+        commit in Git for this particular kernel."""
+        # has the result already been cached?
+        if not self._source is None and not refresh:
+            return self._source
+        # set default value
+        self._source = None
+        if not self.exists:
+            return None
+        # only available if this package is installed
+        if not self.installed:
+            return None
+        # get location of SOURCE file
+        cmd = split("dpkg -L {}".format(self.pkg))
+        res = sp_run(cmd)
+        pdb.set_trace()
+        cmd = split("grep /SOURCE")
+        res = sp_run(cmd, input=res.stdout)
+        if res.returncode == 0:
+            res = res.stdout.splitlines()
+            if len(res) > 0:
+                with open(res[0].strip(), "r") as f:
+                    slines = f.readlines()
+                    for x in slines:
+                        x = x.strip()
+                        if x.startswith("git clone"):
+                            self._git_url = x.split()[2]
+                        if x.startswith("git checkout"):
+                            self._git_hash = x.split()[2]
+                            self._source = x
+        return self._source
+
+    @property
+    def git_url(self, refresh=False):
+        """Returns the url of the Git repository for the package"""
+        if not self._git_url is None and not refresh:
+            return self._git_url
+        # for anything else we will call source as that will set the value
+        self._git_url = None
+        self.source(refresh=refresh)
+        return self._git_url
+
+    @property
+    def git_hash(self, refresh=False):
+        """Returns the hash of the commit the package is based on.
+        Relies on source function to populate values."""
+        if not self._git_hash is None and not refresh:
+            return self._git_hash
+        # for anything else we will call source as that will set the value
+        self._git_hash = None
+        self.source(refresh=refresh)
+        return self._git_hash
+
+    @property
+    def upgradable(self, refresh=False):
+        """Returns True if an available version is higher than the installed
+        version. False if the available version matches the installed version.
+        Otherwise returns None."""
+        if not self._upgradable is None and not refresh:
+            return self._upgradable
+        self._upgradable = None
+        #avail = self.available(refresh=refresh)
+        inst = self.installed(refresh=refresh)
+        if inst is None or inst == False:
+            # not a valid pkg or package not installed
+            return None
+        avail = self.available(refresh=refresh)
+        if avail is None:
+            # technically this shouldn't happen as self.installed would
+            # have identified this as a non-existent package.
+            return None
+        # if we get here, then we should have a version for installed and a 
+        # version for available.
+        v_compare = [inst, avail]
+        v_compare.sort(key=LooseVersion, reverse=True)
+        if inst == v_compare[0]:
+            #Installed version is the highest version available
+            self._upgradable = False
+        else:
+            #Available version is higher than installed version
+            self._upgradable = True
+        return self._upgradable
+
+    @property
+    def customized(self):
+        """Returns True if this package is not sourced from Proxmox or
+        Debian repositories. Not yet implemented."""
+        return False
+
+    @property
+    def active(self):
+        """Query whether this package is the currently loaded kernel.
+        Returns False if this package is not currently loaded.
+        Returns True if the installed version is the same as the loaded kernel.
+        Returns a version string if this is the active kernel, but a different
+        version is installed than what is currently loaded. This would
+        indicate that a reboot is pending to load the updated kernel.
+        Any other case returns None."""
+        # not yet implemented
+        return False
 
 
 class kernels:
@@ -412,13 +649,44 @@ def get_template(name='debian-10', update=False, storage=None):
     pp.dp("template: {}".format(_AVAIL[0]))
     return _AVAIL[0]
 
-def write_bootstrap_scripts():
+def write_bootstrap_scripts(output_dir, target_kernel):
+    """Creates the scripts to be run on the VM/LXC"""
+    ## Skeleton for new script files
+    #output_file = "{}/gitinit.sh".format(output_dir)
+    #script = ("#!/bin/sh -"
+    #          "\n" + "if ! [ \"$(id -u)\" -eq 0 ]; then"
+    #          "\n" + "    echo Must be root"
+    #          "\n" + "    exit 1"
+    #          "\n" + "fi"
+    #          "\n" + "# include variables from conf file, if exist"
+    #          "\n" + "startdir=$(pwd -P)"
+    #          "\n" + "conffile=\"" + conf_file + "\""
+    #          "\n" + "gitdir=\"" + git_dir + "\""
+    #          "\n" + "if [ -f \"$conffile\" ]; then"
+    #          "\n" + "    source \"$conffile\""
+    #          "\n" + "fi"
+    #          "\n" + ""
+    #          "\n" + "cd \"${startdir}\"")
+    #pp.dp("script: {}".format(script))
+    #with open(output_file, "w") as script_file:
+    #    script_file.write(script)
+    #    pp.dp("File written: {}".format(output_file))
+
+    git_dir = "/root/shared/git"
+    conf_file = "/root/shared/bootstrap.conf"
+
+    output_file = "{}/bootstrap.sh".format(output_dir)
     script=("#!/bin/sh -\n"
             "if ! [ \"$(id -u)\" -eq 0 ]; then\n"
             "    echo Must be root" + "\n"
             "    exit 1" + "\n"
             "fi" + "\n"
-            "workdir=$(pwd -P)" + "\n"
+            "startdir=$(pwd -P)" + "\n"
+            "gitdir=\"" + git_dir + "\"\n"
+            "conffile=\"" + conf_file + "\""
+            "\n" + "if [ -f \"${conffile}\" ]; then"
+            "\n" + "    source \"${conffile}\""
+            "\n" + "fi"
             "# Check Locale" + "\n"
             "if (locale 2>&1 | grep \"locale: Cannot set\"); then" + "\n"
             "    echo \"Fixing Locales\"" + "\n"
@@ -451,20 +719,50 @@ def write_bootstrap_scripts():
             "\n" + "pkgs=\"$pkgs git\""
             #"\n" + "pkgs=\"$pkgs \""
             "\n" + "DEBIAN_FRONTEND=noninteractive apt-get install -y $pkgs"
-            "\n" + "if ! [ -d \"${workdir}/build\" ]; then"
-            "\n" + "    mkdir -p \"${workdir}/build\""
+            "\n" + "if ! [ -d \"${gitdir}\" ]; then"
+            "\n" + "    mkdir -p \"${gitdir}\""
             "\n" + "fi"
-            "\n" + "cd \"${workdir}/build\""
+            "\n" + "cd \"${gitdir}\""
             #"\n" + "if ! [ -d \"kernel\" ]; then (mkdir \"kernel\"); fi"
             #"\n" + "cd kernel"
             "\n" + "git clone git://git.proxmox.com/git/pve-kernel.git"
-            "\n" + ""
-            "\n" + ""
-            "\n" + ""
-            "\n" + "")
+            "\n" + "if ! [ -f \"${conffile}\" ]; then"
+            "\n" + "    echo \"gitdir=${gitdir}\" > ${conffile}"
+            "\n" + "fi"
+            "\n" + "cd \"${startdir}\"")
     pdb.set_trace()
     pp.dp("script: {}".format(script))
-    return script
+    with open(output_file, "w") as script_file:
+        script_file.write(script)
+        pp.dp("File written: {}".format(output_file))
+    output_file = "{}/gitinit.sh".format(output_dir)
+    script = ("#!/bin/sh -"
+              "\n" + "if ! [ \"$(id -u)\" -eq 0 ]; then"
+              "\n" + "    echo Must be root"
+              "\n" + "    exit 1"
+              "\n" + "fi"
+              "\n" + "# include variables from conf file, if exist"
+              "\n" + "startdir=$(pwd -P)"
+              "\n" + "conffile=\"" + conf_file + "\""
+              "\n" + "gitdir=\"" + git_dir + "\""
+              "\n" + "if [ -f \"$conffile\" ]; then"
+              "\n" + "    source \"$conffile\""
+              "\n" + "fi"
+              "\n" + "cd \"$gitdir\""
+              "\n" + "if ! [ -d \"${gitdir}/pve-kernel
+              "\n" + "cd pve-kernel"
+              "\n" + ""
+              "\n" + ""
+              "\n" + ""
+              "\n" + ""
+              "\n" + ""
+              "\n" + ""
+              "\n" + ""
+              "\n" + "cd \"${startdir}\"")
+    pp.dp("script: {}".format(script))
+    with open(output_file, "w") as script_file:
+        script_file.write(script)
+        pp.dp("File written: {}".format(output_file))
 
 def create_lxc(cont, tmpl, storage='local-lvm'):
     pp.dp("f: create_lxc")
@@ -543,6 +841,12 @@ if __name__ == "__main__":
                         type=int,
                         default=6)
 
+    parser.add_argument("-K",
+                        "--kernel",
+                        help="Kernel package search string to target",
+                        type=str,
+                        default=None)
+
     parser.add_argument("-V",
                         "--version",
                         help="Show version and exit",
@@ -571,9 +875,7 @@ if __name__ == "__main__":
         cmd = split('pct start {}'.format(cont.id))
         res = sp_run(cmd)
         pp.dp("cmd output: {}".format(res))
-    script = write_bootstrap_scripts()
-    with open(cont.shared_dir + '/bootstrap.sh', "w") as script_file:
-        script_file.write(script)
+    script = write_bootstrap_scripts(cont.shared_dir)
     # a file exists in the pve kernel package which specifies the git id
     # the package was built against
     # next step is to figure out which build was used and git checkout
@@ -581,5 +883,8 @@ if __name__ == "__main__":
     # after that, determine which sub-projects to download
     # after that, determine which packages still need to be installed
     # after that, make! profit :)
+    # 2019.08.30 - rewrote class Kernel. Most operation in class Kernels
+    #   is no longer necessary. Next step is to rework class Kernels.
+    #   also need to review class Kernel and remove any unecessary code.
     sys.exit()
 
