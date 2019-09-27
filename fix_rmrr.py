@@ -66,16 +66,33 @@ class prettyprint:
             self.YC = '\033[1;33m'
             self.EC = '\033[0m'
 
+    def __repr__(self):
+        ret = {}
+        ret['debug'] = self.debug
+        ret['supports_color'] = self.supports_color()
+        return str(ret)
+
+    def __str__(self):
+        ret = "PrettyPrint instance\n"
+        ret = ret + "supports_color: {}\n".format(self.supports_color())
+        ret = ret + "         debug: {}\n".format(self.debug)
+        return ret
+
+
 class kernel:
     # store information about a kernel
     def __repr__(self):
         ret = {}
         ret['pkg'] = self.pkg
         ret['hdr'] = self.hdr
-        ret['version'] = self.version
+        ret['versions'] = self.versions
         ret['installed'] = self.installed
-        ret['installed_version'] = self.installed_version
         ret['active'] = self.active
+        ret['source'] = self.source
+        ret['selected'] = self.selected
+        ret['available'] = self.available
+        ret['policy'] = self.policy
+        ret['exists'] = self.exists
         ret['upgradable'] = self.upgradable
         ret['customized'] = self.customized
         ret['git_url'] = self.git_url
@@ -86,9 +103,13 @@ class kernel:
         ret = "{}\n".format(self.pkg)
         ret = ret + "                pkg: {}\n".format(self.pkg)
         ret = ret + "                hdr: {}\n".format(self.hdr)
-        ret = ret + "            version: {}\n".format(self.version)
+        ret = ret + "             exists: {}\n".format(self.exists)
+        ret = ret + "             policy: {}\n".format(self.policy)
+        ret = ret + "            version: {}\n".format(self.versions)
+        ret = ret + "          available: {}\n".format(self.available)
+        ret = ret + "           selected: {}\n".format(self.selected)
+        ret = ret + "             source: {}\n".format(self.source)
         ret = ret + "          installed: {}\n".format(self.installed)
-        ret = ret + "  installed_version: {}\n".format(self.installed_version)
         ret = ret + "             active: {}\n".format(self.active)
         ret = ret + "         upgradable: {}\n".format(self.upgradable)
         ret = ret + "         customized: {}\n".format(self.customized)
@@ -96,33 +117,62 @@ class kernel:
         ret = ret + "           git_hash: {}".format(self.git_hash)
         return ret
 
-    def __init__(self, pkg=None, hdr=None, version=None, git_url=None,
-                 git_hash=None, installed=False, upgradable=False,
-                 customized=False, selected=False):
-        self.pkg = pkg
-        self.hdr = hdr
-        self.version = version
-        self.installed = installed
-        self.active = False
-        self.upgradable = upgradable
-        self.customized = customized
-        self.installed_version = None
-        self.git_url = git_url
-        self.git_hash = git_hash
-        self._selected = selected
+    def __init__(self, pkg=None, hdr=None):
+        self._pkg = pkg
+        self._hdr = hdr
+        self._installed = None
+        self._upgradable = None
+        self._customized = None
+        self._git_url = None
+        self._git_hash = None
+        self._selected = None
         self._source = None
         self._policy = None
-        self._installed = None
-        self._installed_version = None
         self._versions = None
         self._available = None
         self._exists = None
         self._update_apt = None
-        self._git_hash = None
+        self._active = None
+
+    @property
+    def pkg(self):
+        """Name of package. String."""
+        return self._pkg
+
+    @property
+    def hdr(self):
+        """Name of header package. String."""
+        return self._hdr
+
+    @pkg.setter
+    def pkg(self, pkg):
+        if pkg == self._pkg: return
+        self._pkg = pkg
+        self._exists = None
+        self._policy = None
+        self._installed = None
+        self._versions = None
         self._git_url = None
+        self._git_hash = None
         self._customized = None
         self._active = None
         self._upgradable = None
+        self._source = None
+
+    @hdr.setter
+    def hdr(self, hdr):
+        if hdr == self._hdr: return
+        self._hdr = hdr
+        self._exists = None
+        self._policy = None
+        self._installed = None
+        self._versions = None
+        self._git_url = None
+        self._git_hash = None
+        self._customized = None
+        self._active = None
+        self._upgradable = None
+        self._source = None
 
     @property
     def update_apt(self, refresh=False):
@@ -244,6 +294,10 @@ class kernel:
         """Flag to denote whether this package is selected for action."""
         return self._selected
 
+    @selected.setter
+    def selected(self, selected):
+        self._selected = selected
+
     @property
     def source(self, refresh=False):
         """Get contents of SOURCE file, which points to the specific source
@@ -261,7 +315,6 @@ class kernel:
         # get location of SOURCE file
         cmd = split("dpkg -L {}".format(self.pkg))
         res = sp_run(cmd)
-        pdb.set_trace()
         cmd = split("grep /SOURCE")
         res = sp_run(cmd, input=res.stdout)
         if res.returncode == 0:
