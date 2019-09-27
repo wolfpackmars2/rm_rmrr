@@ -150,7 +150,7 @@ class kernel:
         res = sp_run(cmd)
         self._exists = False
         if len(res.stdout.strip()) > 0:
-            self._exists True
+            self._exists = True
         return self._exists
 
     @property
@@ -749,7 +749,7 @@ def write_bootstrap_scripts(output_dir, target_kernel):
               "\n" + "    source \"$conffile\""
               "\n" + "fi"
               "\n" + "cd \"$gitdir\""
-              "\n" + "if ! [ -d \"${gitdir}/pve-kernel
+              "\n" + "if ! [ -d \"${gitdir}/pve-kernel"
               "\n" + "cd pve-kernel"
               "\n" + ""
               "\n" + ""
@@ -875,7 +875,7 @@ if __name__ == "__main__":
         cmd = split('pct start {}'.format(cont.id))
         res = sp_run(cmd)
         pp.dp("cmd output: {}".format(res))
-    script = write_bootstrap_scripts(cont.shared_dir)
+    script = write_bootstrap_scripts(cont.shared_dir, 'x')
     # a file exists in the pve kernel package which specifies the git id
     # the package was built against
     # next step is to figure out which build was used and git checkout
