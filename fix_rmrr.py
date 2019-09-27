@@ -556,26 +556,26 @@ class lxc:
                 if self.cores > 10:
                     self.cores = 8 #limit cores due to low ram
         self.bridge_id = bridge_id
-        #pp.dp("lxc: {}".format(str(self.__dict__)))
+        #pprint.dp("lxc: {}".format(str(self.__dict__)))
 
 def sp_run(cmd, capture_output=True, timeout=None,
         check=False, encoding=None, text=True, **kwargs):
     if type(cmd) is str:
         cmd = split(cmd)
-    pp.dp("cmd: {}".format(cmd))
+    pprint.dp("cmd: {}".format(cmd))
     return subprocess.run(cmd, capture_output=capture_output,
                           timeout=timeout, check=check, encoding=encoding,
                           text=text, **kwargs)
 
 def header(pp):
-    pp.p("Script Version: {}".format(__VERSION))
-    pp.p("Template Version: {}".format(__TEMPLATE_VERSION))
-    pp.p("-------------------------------------------\n")
+    pprint.p("Script Version: {}".format(__VERSION))
+    pprint.p("Template Version: {}".format(__TEMPLATE_VERSION))
+    pprint.p("-------------------------------------------\n")
 
 def get_template(name='debian-10', update=False, storage=None):
-    pp.dp("get_template.name: {}".format(name))
-    pp.dp("get_template.update: {}".format(update))
-    pp.dp("get_template.storage: {}".format(storage))
+    pprint.dp("get_template.name: {}".format(name))
+    pprint.dp("get_template.update: {}".format(update))
+    pprint.dp("get_template.storage: {}".format(storage))
     d = {}
     d['search'] = name.lower()
     d['name'] = ""
@@ -613,7 +613,7 @@ def get_template(name='debian-10', update=False, storage=None):
     if update:
         subprocess.run(split('pveam update'))
         cmd = split('pveam available -section system')
-        pp.dp("cmd: {}".format(cmd))
+        pprint.dp("cmd: {}".format(cmd))
         res = subprocess.run(cmd, capture_output=True,
                              text=True).stdout.splitlines()
         _AVAIL = []
@@ -624,29 +624,29 @@ def get_template(name='debian-10', update=False, storage=None):
         if len(_AVAIL) > 0:
             # check if update required
             _AVAIL.sort(key=LooseVersion, reverse=True)
-        pp.p("Downloading template: {}".format(_AVAIL[0]))
+        pprint.p("Downloading template: {}".format(_AVAIL[0]))
         cmd = split('pveam download local {}'.format(_AVAIL[0]))
-        pp.dp("cmd: {}".format(cmd))
+        pprint.dp("cmd: {}".format(cmd))
         res = subprocess.run(cmd, capture_output=True, text=True)
-        pp.dp("res: {}".format(res))
-        pp.dp("_AVAIL[0]: {}".format(_AVAIL[0]))
+        pprint.dp("res: {}".format(res))
+        pprint.dp("_AVAIL[0]: {}".format(_AVAIL[0]))
     cmd = split('pveam list local')
-    pp.dp("cmd: {}".format(cmd))
+    pprint.dp("cmd: {}".format(cmd))
     res = subprocess.run(cmd, capture_output=True,
                          text=True).stdout.splitlines()[1:]
-    pp.dp("res: {}".format(res))
+    pprint.dp("res: {}".format(res))
     _AVAIL=[]
     for x in res:
-        pp.dp("x: {}".format(x))
+        pprint.dp("x: {}".format(x))
         if __TSEARCH in x:
             x = x.split()[0]
-            pp.dp("x: {}".format(x))
+            pprint.dp("x: {}".format(x))
             #_AVAIL[x.partition("/")[2]] = x
             _AVAIL.append(x)
-            pp.dp("_AVAIL: {}\n".format(_AVAIL))
-    pp.dp("_AVAIL Final: {}\n".format(_AVAIL))
+            pprint.dp("_AVAIL: {}\n".format(_AVAIL))
+    pprint.dp("_AVAIL Final: {}\n".format(_AVAIL))
     _AVAIL.sort(key=LooseVersion, reverse=True)
-    pp.dp("template: {}".format(_AVAIL[0]))
+    pprint.dp("template: {}".format(_AVAIL[0]))
     return _AVAIL[0]
 
 def write_bootstrap_scripts(output_dir, target_kernel):
@@ -667,10 +667,10 @@ def write_bootstrap_scripts(output_dir, target_kernel):
     #          "\n" + "fi"
     #          "\n" + ""
     #          "\n" + "cd \"${startdir}\"")
-    #pp.dp("script: {}".format(script))
+    #pprint.dp("script: {}".format(script))
     #with open(output_file, "w") as script_file:
     #    script_file.write(script)
-    #    pp.dp("File written: {}".format(output_file))
+    #    pprint.dp("File written: {}".format(output_file))
 
     git_dir = "/root/shared/git"
     conf_file = "/root/shared/bootstrap.conf"
@@ -730,11 +730,10 @@ def write_bootstrap_scripts(output_dir, target_kernel):
             "\n" + "    echo \"gitdir=${gitdir}\" > ${conffile}"
             "\n" + "fi"
             "\n" + "cd \"${startdir}\"")
-    pdb.set_trace()
-    pp.dp("script: {}".format(script))
+    pprint.dp("script: {}".format(script))
     with open(output_file, "w") as script_file:
         script_file.write(script)
-        pp.dp("File written: {}".format(output_file))
+        pprint.dp("File written: {}".format(output_file))
     output_file = "{}/gitinit.sh".format(output_dir)
     script = ("#!/bin/sh -"
               "\n" + "if ! [ \"$(id -u)\" -eq 0 ]; then"
@@ -759,13 +758,13 @@ def write_bootstrap_scripts(output_dir, target_kernel):
               "\n" + ""
               "\n" + ""
               "\n" + "cd \"${startdir}\"")
-    pp.dp("script: {}".format(script))
+    pprint.dp("script: {}".format(script))
     with open(output_file, "w") as script_file:
         script_file.write(script)
-        pp.dp("File written: {}".format(output_file))
+        pprint.dp("File written: {}".format(output_file))
 
 def create_lxc(cont, tmpl, storage='local-lvm'):
-    pp.dp("f: create_lxc")
+    pprint.dp("f: create_lxc")
     cmd = ("pct create {id} \"{tmpl}\" -storage {storage} -memory {ram} "
            "-net0 \"name=eth0,bridge=vmbr{bridge},hwaddr=FA:4D:70:91:B8:6F,"
            "ip=dhcp,type=veth\" -hostname buildr -cores {cores} -rootfs 80 "
@@ -789,16 +788,16 @@ def create_lxc(cont, tmpl, storage='local-lvm'):
     else:
         #shared_dir doesn't exist, create it
         os.makedirs(cont.shared_dir)
-    pp.dp("cmd: {}".format(cmd))
+    pprint.dp("cmd: {}".format(cmd))
     cmd = split(cmd)
-    pp.dp("cmd: {}".format(cmd))
-    pp.p("Created LXC {}".format(cont.id))
+    pprint.dp("cmd: {}".format(cmd))
+    pprint.p("Created LXC {}".format(cont.id))
     #pdb.set_trace()
     res = sp_run(cmd)
     if res.returncode == 0:
-        pp.dp("LXC Create result: {}".format(res.stdout))
+        pprint.dp("LXC Create result: {}".format(res.stdout))
         return True
-    pp.dp("LXC Create error: {}".format(res.stderr))
+    pprint.dp("LXC Create error: {}".format(res.stderr))
     return False
 
 if __name__ == "__main__":
@@ -860,21 +859,21 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    pp = prettyprint(args.verbose)
+    pprint = prettyprint(args.verbose)
 
-    header(pp)
+    header(pprint)
 
-    pp.dp(args)
-    #pp.dp(args.bridge)
-    #pp.dp(pp.supports_color())
+    pprint.dp(args)
+    #pprint.dp(args.bridge)
+    #pprint.dp(pprint.supports_color())
     tmpl = get_template()
-    pp.dp("tmpl: {}".format(tmpl))
+    pprint.dp("tmpl: {}".format(tmpl))
     cont = lxc(lxc_id=args.id, shared_dir=args.share)
-    pp.dp("cont: {}".format(cont))
+    pprint.dp("cont: {}".format(cont))
     if create_lxc(cont, tmpl):
         cmd = split('pct start {}'.format(cont.id))
         res = sp_run(cmd)
-        pp.dp("cmd output: {}".format(res))
+        pprint.dp("cmd output: {}".format(res))
     script = write_bootstrap_scripts(cont.shared_dir, 'x')
     # a file exists in the pve kernel package which specifies the git id
     # the package was built against
