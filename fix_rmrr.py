@@ -101,20 +101,30 @@ class kernel:
 
     def __str__(self):
         ret = "{}\n".format(self.pkg)
-        ret = ret + "                pkg: {}\n".format(self.pkg)
-        ret = ret + "                hdr: {}\n".format(self.hdr)
-        ret = ret + "             exists: {}\n".format(self.exists)
-        ret = ret + "             policy: {}\n".format(self.policy)
-        ret = ret + "            version: {}\n".format(self.versions)
-        ret = ret + "          available: {}\n".format(self.available)
-        ret = ret + "           selected: {}\n".format(self.selected)
-        ret = ret + "             source: {}\n".format(self.source)
-        ret = ret + "          installed: {}\n".format(self.installed)
-        ret = ret + "             active: {}\n".format(self.active)
-        ret = ret + "         upgradable: {}\n".format(self.upgradable)
-        ret = ret + "         customized: {}\n".format(self.customized)
-        ret = ret + "            git_url: {}\n".format(self.git_url)
-        ret = ret + "           git_hash: {}".format(self.git_hash)
+        ret = ret + "pkg:".rjust(15, " ") + " {}\n".format(self.pkg)
+        ret = ret + "hdr:".rjust(15, " ") + " {}\n".format(self.hdr)
+        ret = ret + "exists:".rjust(15, " ") + " {}\n".format(self.exists)
+        ret = ret + "versions:".rjust(15, " ") + " {}\n".format(self.versions)
+        ret = ret + "available:".rjust(15, " ")
+        ret = ret + " {}\n".format(self.available)
+        ret = ret + "selected:".rjust(15, " ") + " {}\n".format(self.selected)
+        ret = ret + "source:".rjust(15, " ") + " {}\n".format(self.source)
+        ret = ret + "installed:".rjust(15, " ")
+        ret = ret + " {}\n".format(self.installed)
+        ret = ret + "active:".rjust(15, " ") + " {}\n".format(self.active)
+        ret = ret + "upgradable:".rjust(15, " ")
+        ret = ret + " {}\n".format(self.upgradable)
+        ret = ret + "customized:".rjust(15, " ")
+        ret = ret + " {}\n".format(self.customized)
+        ret = ret + "git_url:".rjust(15, " ") + " {}\n".format(self.git_url)
+        ret = ret + "git_hash:".rjust(15, " ") + " {}\n".format(self.git_hash)
+        if not self.policy is None:
+            ret = ret + "policy:".rjust(15, " ")
+            # ret = ret + " {}\n".format(self.policy.splitlines()[0])
+            for l in self.policy.splitlines():
+                ret = ret + "\n{}{}".format(" " * 16, l)
+        else:
+            ret = ret + "policy:".rjust(15, " ") + " {}\n".format(self.policy)
         return ret
 
     def __init__(self, pkg=None, hdr=None):
@@ -175,26 +185,26 @@ class kernel:
         self._source = None
 
     @property
-    def update_apt(self, refresh=False):
+    def update_apt(self):
         """Updates apt. Returns True on success."""
-        if not self._update_apt is None and not refresh:
+        if not self._update_apt is None:
             return self._update_apt
         self._update_apt = None
         cmd = split("apt-get update")
         res = sp_run(cmd)
         # Update policy and exists
-        self.exists(refresh=True)
-        self.policy(refresh=True)
+        self._exists = None
+        self._policy = None
         if res.returncode == 0:
             return True
         else:
             return False
 
     @property
-    def exists(self, refresh=False):
+    def exists(self):
         """Return True if the package exists, otherwise False
         Uses apt-cache policy to determine if the package exists"""
-        if not self._exists is None and not refresh:
+        if not self._exists is None:
             return self._exists
         cmd = split("apt-cache policy {}".format(self.pkg))
         res = sp_run(cmd)
@@ -204,15 +214,15 @@ class kernel:
         return self._exists
 
     @property
-    def policy(self, refresh=False):
+    def policy(self):
         """Get the output from apt-cache policy
         Returns None if the package information isn't available
         Otherwise returns the text from apt-cache stdout"""
         # cached result?
-        if not self._policy is None and not refresh:
+        if not self._policy is None:
             return self._policy
         self._policy = None
-        if not self.exists():
+        if not self.exists:
             return None
         cmd = ("apt-cache policy {}".format(self.pkg))
         res = sp_run(cmd)
@@ -221,18 +231,18 @@ class kernel:
         return self._policy
 
     @property
-    def installed(self, refresh=False):
+    def installed(self):
         """Get installed version of the kernel package
         Returns None if the package doesn't exist
         Returns False if the package isn't installed
         Otherwise, returns the installed version"""
         # has result been cached?
-        if not self._installed is None and not refresh:
+        if not self._installed is None:
             return self._installed
         self._installed = None
         if not self.exists:
             return None
-        pol = self.policy()
+        pol = self.policy
         if pol is None:
             return None
         pol = pol.splitlines()
@@ -245,10 +255,10 @@ class kernel:
         return self._installed
 
     @property
-    def versions(self, refresh=False):
+    def versions(self):
         """Return list of known versions"""
         # has result been cached?
-        if not self._versions is None and not refresh:
+        if not self._versions is None:
             return self._versions
         if not self.exists:
             return None
@@ -271,15 +281,15 @@ class kernel:
         return self._versions
 
     @property
-    def available(self, refresh=False):
+    def available(self):
         """Return highest version available. Returns None if package doesn't
         exist."""
-        if not self._available is None and not refresh:
+        if not self._available is None:
             return self._available
         self._available = None
         if not self.exists:
             return None
-        pol = self.policy()
+        pol = self.policy
         if pol is None:
             return None
         pol = pol.splitlines()
@@ -299,11 +309,11 @@ class kernel:
         self._selected = selected
 
     @property
-    def source(self, refresh=False):
+    def source(self):
         """Get contents of SOURCE file, which points to the specific source
         commit in Git for this particular kernel."""
         # has the result already been cached?
-        if not self._source is None and not refresh:
+        if not self._source is None:
             return self._source
         # set default value
         self._source = None
@@ -332,49 +342,51 @@ class kernel:
         return self._source
 
     @property
-    def git_url(self, refresh=False):
+    def git_url(self):
         """Returns the url of the Git repository for the package"""
-        if not self._git_url is None and not refresh:
+        if not self._git_url is None:
             return self._git_url
         # for anything else we will call source as that will set the value
         self._git_url = None
-        self.source(refresh=refresh)
+        self._source = None
+        self.source
         return self._git_url
 
     @property
-    def git_hash(self, refresh=False):
+    def git_hash(self):
         """Returns the hash of the commit the package is based on.
         Relies on source function to populate values."""
-        if not self._git_hash is None and not refresh:
+        if not self._git_hash is None:
             return self._git_hash
         # for anything else we will call source as that will set the value
         self._git_hash = None
-        self.source(refresh=refresh)
+        self._source = None
+        self.source
         return self._git_hash
 
     @property
-    def upgradable(self, refresh=False):
+    def upgradable(self):
         """Returns True if an available version is higher than the installed
         version. False if the available version matches the installed version.
         Otherwise returns None."""
-        if not self._upgradable is None and not refresh:
+        if not self._upgradable is None:
             return self._upgradable
         self._upgradable = None
         #avail = self.available(refresh=refresh)
-        inst = self.installed(refresh=refresh)
-        if inst is None or inst == False:
+        self._installed = None
+        if self.installed is None or self.installed == False:
             # not a valid pkg or package not installed
             return None
-        avail = self.available(refresh=refresh)
-        if avail is None:
+        self._available = None
+        if self.available is None:
             # technically this shouldn't happen as self.installed would
             # have identified this as a non-existent package.
             return None
         # if we get here, then we should have a version for installed and a 
         # version for available.
-        v_compare = [inst, avail]
+        v_compare = [self.installed, self.available]
         v_compare.sort(key=LooseVersion, reverse=True)
-        if inst == v_compare[0]:
+        if self.installed == v_compare[0]:
             #Installed version is the highest version available
             self._upgradable = False
         else:
@@ -401,170 +413,30 @@ class kernel:
         return False
 
 
-class kernels:
-
-    def __get_source__(self, pkg):
-        cmd = split('dpkg --search {}'.format(pkg))
-        res = subprocess.run(cmd, capture_output=True, text=True)
-        if res.returncode != 0:
-            return None
-        # pve-kernel-5.0.18-1-pve:
-            # /usr/share/doc/pve-kernel-5.0.18-1-pve/SOURCE
-        res = res.stdout
-        if not 'SOURCE' in res:
-            return None
-        res = res.splitlines()
-        source_file = None
-        for x in res:
-            if 'SOURCE' in x:
-                source_file = x.split(": ")[1]
-                break
-        cmd = split('cat {}'.format(source_file))
-        res = subprocess.run(cmd, capture_output=True, text=True)
-        if res.returncode != 0:
-            return None
-        res = res.stdout.splitlines()
-        git_url = None
-        git_hash = None
-        for x in res:
-            if 'git clone ' in x:
-                git_url = x.rpartition(" ")[2]
-            if 'git checkout ' in x:
-                git_hash = x.rpartition(" ")[2]
-        if not git_url or not git_hash:
-            return None
-        return {'url': git_url, 'hash': git_hash}
-
-    def __get_kernel_details__(self, pkg):
-        krnl = kernel(pkg=pkg)
-        cmd = split('apt-cache policy {}'.format(pkg))
-        res = subprocess.run(cmd, capture_output=True, text=True)
-        if res.returncode != 0:
-            return None
-        res = res.stdout.splitlines()
-        krnl.installed_version = res[1].split(": ")[1]
-        if krnl.installed_version == '(none)':
-            krnl.installed = False
-            krnl.installed_version = None
-            krnl.upgradable = True
-        else:
-            krnl.installed = True
-        krnl.version = res[2].split(": ")[1]
-        if krnl.version != krnl.installed_version:
-            krnl.upgradable = True
-        krnl.hdr = krnl.pkg.replace('-kernel-', '-headers-')
-        if krnl.installed:
-            src = self.__get_source__(pkg)
-            if src is not None:
-                krnl.git_url = src['url']
-                krnl.git_hash = src['hash']
-        return krnl
-        # krnl.customized
-
-    def __get_pkg_details__(self, pkg):
-        return self.__get_kernel_details__(pkg)
-
-    def __get_kernel_meta__(self):
-        cmd = split('apt-cache search Latest Proxmox')
-        res = subprocess.run(cmd, capture_output=True, text=True)
-        if res.returncode != 0 or \
-           not ' - Latest Proxmox VE Kernel Image' in res.stdout:
-            return None
-        res = list(res.stdout.splitlines())
-        meta = {}
-        for x in res:
-            if ' - Latest Proxmox VE Kernel Image' in x:
-                pkg = x.partition(" - ")[0]
-                meta["pkg"] = pkg
-                pkg = self.__get_pkg_details__(pkg)
-                meta["installed"] = pkg.installed_version
-                meta["available"] = pkg.version
-                meta["updatable"] = pkg.upgradable
-                self.installed.append(pkg)
-                cmd = split('apt-cache show {}'.format(meta['pkg']))
-                res = subprocess.run(cmd, capture_output=True, text=True)
-                if res.returncode != 0:
-                    return None
-                lst = res.stdout.split('\n\n')
-                for x in lst:
-                    if not 'Version: {}'.format(meta["installed"]) in x:
-                        continue
-                    for y in x.splitlines():
-                        if 'Depends: ' in y:
-                            meta["kernel_abi"] = y.partition('pve-kernel-')[2]
-                return meta
+class kernels(dict):
+    def __repr__(self):
         return None
 
-        for x in self._avail:
-            pkg = x.partition(" - ")[0]
-            self.available[pkg] = self.__get_kernel_details__(pkg)
-            if loaded_krnl in pkg:
-                self.available[pkg].active = True
-                self.active = self.available[pkg]
-            if self.available[pkg].installed:
-                self.installed.append(pkg)
-
-
-    def __get_available_kernels__(self):
-        cmd = split('apt-cache search The Proxmox PVE Kernel Image')
-        # pve-kernel-5.0.15-1-pve - The Proxmox PVE Kernel Image
-        res = subprocess.run(cmd, capture_output=True, text=True)
-        if res.returncode != 0 or \
-           not ' - The Proxmox PVE Kernel Image' in res.stdout:
-            return None
-        res = list(res.stdout.splitlines())
-        for x in res:
-            if not " - The Proxmox PVE Kernel Image" in x:
-                res.remove(x)
-        return list(res)
-
-    def __repr__(self):
-        ret = {}
-        ret["installed"] = self.installed
-        ret["active"] = self.active
-        ret["available"] = self.available
-        ret["apt_updated"] = self.apt_updated
-        return str(ret)
-
     def __str__(self):
-        ret = "active: {}\n".format(self.active.pkg)
-        ret = ret + "apt_updated: {}\n".format(self.apt_updated)
-        ret = ret + "installed ({})\n".format(len(self.installed))
-        for x in self.installed:
-            if x == self.active.pkg:
-                x = x + " [ACTIVE]"
-            ret = ret + "    {}\n".format(x)
-        ret = ret + "available ({})\n".format(len(self.available))
-        for x in self.available:
-            ret = ret + "    " + str(self.available[x]).replace('\n', '\n    ')
-            ret = ret + "\n\n"
-        return ret.rstrip()
+        ret = ""
+        for k in self.keys():
+            ret = ret + "{}\n{}".format(k, self[k])
+        return ret
 
-    def __init__(self, update_apt = False):
-        self.installed = []
-        self.available = {}
-        self.active = kernel()
-        self.apt_updated = False
-        if update_apt:
-            cmd = split('apt-get update')
-            res = subprocess.run(cmd, capture_output=True, text=True)
-            if res.returncode == 0:
-                self.apt_updated = True
-            else:
-                self.apt_updated = False
-        self._avail = self.__get_available_kernels__()
-        cmd = split('uname -r')
-        loaded_krnl = subprocess.run(cmd, capture_output=True, text=True)
-        loaded_krnl = loaded_krnl.stdout.strip()
-        self.meta = self.__get_kernel_meta__()
-        for x in self._avail:
-            pkg = x.partition(" - ")[0]
-            self.available[pkg] = self.__get_kernel_details__(pkg)
-            if loaded_krnl in pkg:
-                self.available[pkg].active = True
-                self.active = self.available[pkg]
-            if self.available[pkg].installed:
-                self.installed.append(pkg)
+    def __init__(self):
+        cmd = split('apt-cache search The Proxmox PVE Kernel Image')
+        res = subprocess.run(cmd, capture_output=True, text=True)
+        if res.returncode == 0:
+            res = list(res.stdout.splitlines())
+            for x in res:
+                if " - The Proxmox PVE Kernel Image" in x:
+                    pkg = x.partition(" - ")[0]
+                    self[pkg] = kernel(pkg=pkg)
+
+    @property
+    def list(self):
+        return list(self.keys())
+
 
 class lxc:
 
@@ -615,7 +487,7 @@ def sp_run(cmd, capture_output=True, timeout=None,
         check=False, encoding=None, text=True, **kwargs):
     if type(cmd) is str:
         cmd = split(cmd)
-    pprint.dp("cmd: {}".format(cmd))
+    #pprint.dp("cmd: {}".format(cmd))
     return subprocess.run(cmd, capture_output=capture_output,
                           timeout=timeout, check=check, encoding=encoding,
                           text=text, **kwargs)
