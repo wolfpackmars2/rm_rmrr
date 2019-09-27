@@ -669,13 +669,17 @@ def write_bootstrap_scripts(output_dir, target_kernel):
               "\n" + "startdir=$(pwd -P)"
               "\n" + "conffile=\"" + conf_file + "\""
               "\n" + "gitdir=\"" + git_dir + "\""
+              "\n" + "kernel_git_url=\"\""
+              "\n" + "kernel_git_hash=\"\""
               "\n" + "if [ -f \"$conffile\" ]; then"
               "\n" + "    source \"$conffile\""
               "\n" + "fi"
               "\n" + "cd \"$gitdir\""
               "\n" + "if ! [ -d \"${gitdir}/pve-kernel"
               "\n" + "cd pve-kernel"
-              "\n" + ""
+              "\n" + "if kernel_git_url == \"\"; then exit 1"
+              "\n" + "if kernel_git_hash == \"\"; then exit 1"
+              "\n" + "git checkout $kernel_git_hash"
               "\n" + ""
               "\n" + ""
               "\n" + ""
@@ -684,9 +688,18 @@ def write_bootstrap_scripts(output_dir, target_kernel):
               "\n" + ""
               "\n" + "cd \"${startdir}\"")
     pprint.dp("script: {}".format(script))
-    with open(output_file, "w") as script_file:
-        script_file.write(script)
-        pprint.dp("File written: {}".format(output_file))
+    if type(target_kernel) == kernel:
+        with open(output_file, "w") as script_file:
+            script_file.write(script)
+            pprint.dp("File written: {}".format(output_file))
+        output_file = "{}/bootstrap.conf".format(output_dir)
+        script = ("#!/bin/sh -"
+                  "\n" + "kernel_git_url=" + target_kernel.git_url
+                  "\n" + "kernel_git_hash=" + target_kernel.git_hash)
+        with open(output_file, "w") as script_file:
+            script_file.write(script)
+            pprint.dp("File written: {}".format(output_file))
+
 
 def create_lxc(cont, tmpl, storage='local-lvm'):
     pprint.dp("f: create_lxc")
@@ -799,6 +812,28 @@ if __name__ == "__main__":
         cmd = split('pct start {}'.format(cont.id))
         res = sp_run(cmd)
         pprint.dp("cmd output: {}".format(res))
+    k = kernels()
+    l = kernels.list
+    l.sort(key=LooseVersion, reverse=True)
+    krnl = None
+    if args.kernel:
+        # User specified a kernel search string to use
+        # go through the list of kernels to find the specified string
+        for ll in l:
+            if args.kernel in ll:
+                krnl = k[ll]
+                break
+        if not krnl:
+            exitstring = "The specified kernel \"{}\" was not found."
+            sys.exit(exitstring.format(args.kernel))
+    if not krnl:
+        for ll in l:
+            if k[ll].installed:
+                krnl = k[ll]
+                break
+    if not krnl:
+        # something went wrong, unable to find an installed kernel
+        sys.exit("Unable to find a kernel to work with")
     script = write_bootstrap_scripts(cont.shared_dir, 'x')
     # a file exists in the pve kernel package which specifies the git id
     # the package was built against
