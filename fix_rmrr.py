@@ -2,7 +2,7 @@
 #==============================================================================
 # vim: softtabstop=4 shiftwidth=4 expandtab fenc=utf-8 cc=80 nu
 #==============================================================================
-import argparse, multiprocessing, os, sys, subprocess, pdb
+import argparse, multiprocessing, os, sys, subprocess, pdb, ipaddress
 from shlex import split
 from distutils.version import LooseVersion
 
@@ -11,6 +11,7 @@ __VERSION = "2019.08.14-0"
 __TEMPLATE_VERSION = 0
 __TSEARCH = "debian-10"
 __TEMPLATE_NAME = "rmrr-" + str(__TEMPLATE_VERSION) + "-{tname}"
+__MAC_VENDOR = "FA4D70"
 
 class prettyprint:
     RC = ""
@@ -382,7 +383,7 @@ class kernel:
             # technically this shouldn't happen as self.installed would
             # have identified this as a non-existent package.
             return None
-        # if we get here, then we should have a version for installed and a 
+        # if we get here, then we should have a version for installed and a
         # version for available.
         v_compare = [self.installed, self.available]
         v_compare.sort(key=LooseVersion, reverse=True)
@@ -438,7 +439,248 @@ class kernels(dict):
         return list(self.keys())
 
 
-class lxc:
+class pvenetwork:
+    def __str__(self):
+        ret = "-net{} \"name={}".format(self.id, self.name)
+        if not self.bridge is None:
+            ret = ret + ",bridge=vmbr{}".format(self.bridge)
+        if not self.firewall is None:
+            if self.firewall:
+                ret = ret + ",firewall=1"
+            else:
+                ret = ret + ",firewall=0"
+        if not self.gateway is None:
+            ret = ret + ",gateway{}={}"
+            if self.gateway.version == 4:
+                ret = ret.format('', self.gateway.exploded)
+            else:
+                ret = ret.format('6', self.gateway.exploded)
+        if not self.hwaddr is None:
+            ret = ret + ",hwaddr={}".format(self.hwaddr)
+        if not self.ip is None:
+            if type(self.ip) is str:
+                ret = ret + ",ip={}".format(self.ip)
+            else:
+                ret = ret + ",ip={}".format(self.ip.exploded)
+        if not self.ip6 is None:
+            if type(self.ip6) is str:
+                ret = ret + ",ip6={}".format(self.ip6)
+            else:
+                ret = ret + ",ip6={}".format(self.ip6.exploded)
+        if not self.mtu is None:
+            ret = ret + ",mtu={}".format(self.mtu)
+        if not self.ratelimit is None:
+            ret = ret + ",rate={}".format(self.ratelimit)
+        if not self.tagid is None:
+            ret = ret + ",tagid={}".format(self.tagid)
+        if not self.trunks is None:
+            ret = ret + ",trunks={}".format(self.trunks)
+        if not self.nettype is None:
+            ret = ret + ",type={}".format(self.nettype)
+        ret = ret + "\""
+        return ret
+
+    def __init__(self, id=0, name='eth0', bridge=None, firewall=None,
+                 gateway=None, hwaddr=None, ip='dhcp', ip6=None, mtu=None,
+                 ratelimit=None, tagid=None, trunks=None, nettype='veth'):
+        self.id = id
+        self.name = name
+        self.bridge = bridge
+        self.firewall = firewall
+        self.gateway = gateway
+        self.hwaddr = hwaddr
+        self.ip = ip
+        self.ip6 = ip6
+        self.mtu = mtu
+        self.ratelimit = ratelimit
+        self.tagid = tagid
+        self.trunks = trunks
+        self.nettype = nettype
+
+    def tostring(self):
+        return self.__str__()
+
+    @property
+    def string(self):
+        return self.__str__()
+
+    @property
+    def nettype(self):
+        return 'veth'
+
+    @nettype.setter
+    def nettype(self, nettype):
+        # only nettype possible is 'veth'
+        return
+
+    @property
+    def trunks(self):
+        return self._trunks
+
+    @trunks.setter
+    def trunks(self, trunks):
+        if not type(trunks) is str:
+            self._trunks = None
+        else:
+            self._trunks = trunks
+
+    @property
+    def tagid(self):
+        return self._tagid
+
+    @tagid.setter
+    def tagid(self, tagid):
+        if not type(tagid) is int or tagid < 1 or tagid > 4094:
+            self._tagid = None
+        else:
+            self._tagid = tagid
+
+    @property
+    def ratelimit(self):
+        return self._ratelimit
+
+    @ratelimit.setter
+    def ratelimit(self, ratelimit):
+        if type(ratelimit) is int:
+            self._ratelimit = abs(ratelimit)
+        else:
+            self._ratelimit = None
+
+    @property
+    def mtu(self):
+        return self._mtu
+
+    @mtu.setter
+    def mtu(self, mtu):
+        if type(mtu) is int:
+            if mtu < 64: mtu = 64
+            self._mtu = mtu
+        else:
+            self._mtu = None
+
+    @property
+    def ip6(self):
+        return self._ip6
+
+    @ip6.setter
+    def ip6(self, ip6):
+        if type(ip6) is str:
+            try:
+                self._ip6 = ipaddress.ip_address(ip6)
+                if self._ip6.version == 4:
+                    self._ip4 = self._ip6
+                    self._ip6 = None
+                return
+            except:
+                valid = ['auto', 'dhcp', 'manual']
+                if ip6 in valid:
+                    self._ip6 = ip6
+                else:
+                    self._ip6 = None
+                return
+        else:
+            self._ip6 = None
+            return
+
+    @property
+    def ip(self):
+        return self._ip
+
+    @ip.setter
+    def ip(self, ip):
+        try:
+            self._ip = ipaddress.IPv4Network(ip)
+        except:
+            valid = ['dhcp', 'manual']
+            if ip in valid:
+                self._ip = ip
+            else:
+                self._ip = None
+
+    @property
+    def hwaddr(self):
+        if self._hwaddr is None: return None
+        ret = "{}:{}:{}:{}:{}:{}"
+        hh = self._hwaddr.hex().rjust(12, '0').upper()
+        ret = ret.format(hh[0:2],
+                         hh[2:4],
+                         hh[4:6],
+                         hh[6:8],
+                         hh[8:10],
+                         hh[10:12])
+        return ret
+
+    @hwaddr.setter
+    def hwaddr(self, hwaddr):
+        tt = type(hwaddr)
+        if tt is int:
+            # convert to hex string
+            hwaddr = hex(hwaddr).partition('x')[2].rjust(12, '0')
+            self._hwaddr = bytes.fromhex(hwaddr[0:12])
+            return
+        elif tt is str:
+            hwaddr = hwaddr.replace(':', '').replace('-', '').replace(' ', '')
+            hwaddr = hwaddr.rjust(12, '0')
+            self._hwaddr = bytes.fromhex(hwaddr[0:12])
+            return
+        elif tt is bytes:
+            self._hwaddr = bytes.fromhex(hwaddr.hex().rjust(12, '0')[0:12])
+            return
+        else:
+            self._hwaddr = None
+
+    @property
+    def gateway(self):
+        return self._gateway
+
+    @gateway.setter
+    def gateway(self, gateway):
+        try:
+            self._gateway = ipaddress.ip_address(gateway)
+        except:
+            self._gateway = None
+
+    @property
+    def firewall(self):
+        return self._firewall
+
+    @firewall.setter
+    def firewall(self, firewall):
+        if not type(firewall) is bool: firewall = None
+        self._firewall = firewall
+
+    @property
+    def bridge(self):
+        return self._bridge
+
+    @bridge.setter
+    def bridge(self, bridge):
+        if not type(bridge) is int: bridge = None
+        elif bridge < 0 or bridge > 4094: bridge = None
+        self._bridge = bridge
+
+    @property
+    def name(self):
+        return self._name
+
+    @name.setter
+    def name(self, name):
+        if not type(name) is str: name = None
+        self._name = name
+
+    @property
+    def id(self):
+        return self._id
+
+    @id.setter
+    def id(self, id):
+        if id is None: id = 0
+        if not type(id) is int: id = 0
+        if id > 9 or id < 0: id = 0
+        self._id = id
+
+
+class lxc(dict):
 
     def __repr__(self):
         return str(self.__dict__)
@@ -452,11 +694,18 @@ class lxc:
         return ret.strip()
 
     def __init__(self, lxc_id=500, shared_dir="shared", cores=None, ram=None,
-                 bridge_id=0, template="debian-10", storage="local-lvm"):
-        self.id = lxc_id
+                 bridge_id=0, template="debian-10", storage="local-lvm",
+                 vendorid=None, macaddr=None):
+        self._id = lxc_id
         self.shared_dir = os.path.abspath(shared_dir)
         self.cores = cores
         self.ram = ram
+        if vendorid is None: vendorid = 'FA4D70'
+        vendorid = self.validate_mac(vendorid)
+        if not vendorid: vendorid = 'FA4D70'
+        macaddr = self.validate_mac(macaddr)
+        if not macaddr: macaddr = self.validate_mac(hex(self.id))
+        self._vendor_id = vendorid
         if self.cores is None:
             c = multiprocessing.cpu_count()
             if c > 10:
@@ -482,6 +731,52 @@ class lxc:
                     self.cores = 8 #limit cores due to low ram
         self.bridge_id = bridge_id
         #pprint.dp("lxc: {}".format(str(self.__dict__)))
+
+    @property
+    def networks(self):
+        # net0 - net9
+        return self._networks
+
+    @property
+    def mountpoints(self):
+        # mp0 - mp9
+        return self._mountpoints
+
+    @property
+    def id(self):
+        if self._id is None: self._id = 500
+        return self._id
+
+    @id.setter
+    def id(self, id):
+        self._id = abs(int(id))
+
+    def id_to_macaddr(self):
+        return hex(self.id % int('fffff', 16))
+
+    def validate_mac(self, macaddr):
+        """Verify mac address portion is valid. A mac address portion is 6 HEX
+        characters max and can be converted to an integer.
+        Example: 7F8A80
+        Type: String
+        Returns: False if invalid, macaddr cleaned and capitalized if valid."""
+        if 'x' in macaddr:
+            # handle 0xABCD strings
+            macaddr = macaddr.partition('x')[2]
+        macaddr = macaddr.replace(':', '')
+        macaddr = macaddr.replace('-', '')
+        macaddr = macaddr.upper()
+        if len(macaddr) > 6: return False
+        macaddr = macaddr.rjust(6, '0')
+        try:
+            int(macaddr, 16)
+        except ValueError:
+            return False
+        return macaddr
+
+    @property
+    def nic_vendor(self):
+        return self._vendor_id
 
 def sp_run(cmd, capture_output=True, timeout=None,
         check=False, encoding=None, text=True, **kwargs):
@@ -629,7 +924,7 @@ def write_bootstrap_scripts(output_dir, target_kernel):
             "gpg_key=\"proxmox-ve-release-6.x.gpg\"" + "\n"
             "pve_repo=\"deb http://download.proxmox.com/debian/pve buster "
             "pve-no-subscription\"" + "\n"
-            "wget \"http://download.proxmox.com/debian/$gpg_key\" -O " 
+            "wget \"http://download.proxmox.com/debian/$gpg_key\" -O "
             "\"/etc/apt/trusted.gpg.d/$gpg_key\"" + "\n"
             "echo \"$pve_repo\" > /etc/apt/sources.list.d/pve.list" + "\n"
             "apt-get update || (echo \"Something went wrong\" && exit 1)"
@@ -688,14 +983,14 @@ def write_bootstrap_scripts(output_dir, target_kernel):
               "\n" + ""
               "\n" + "cd \"${startdir}\"")
     pprint.dp("script: {}".format(script))
-    if type(target_kernel) == kernel:
+    if type(target_kernel) is kernel:
         with open(output_file, "w") as script_file:
             script_file.write(script)
             pprint.dp("File written: {}".format(output_file))
         output_file = "{}/bootstrap.conf".format(output_dir)
         script = ("#!/bin/sh -"
-                  "\n" + "kernel_git_url=" + target_kernel.git_url
-                  "\n" + "kernel_git_hash=" + target_kernel.git_hash)
+                  "\n" + "kernel_git_url=\"" + target_kernel.git_url + "\""
+                  "\n" + "kernel_git_hash=\"" + target_kernel.git_hash + "\"")
         with open(output_file, "w") as script_file:
             script_file.write(script)
             pprint.dp("File written: {}".format(output_file))
@@ -703,11 +998,13 @@ def write_bootstrap_scripts(output_dir, target_kernel):
 
 def create_lxc(cont, tmpl, storage='local-lvm'):
     pprint.dp("f: create_lxc")
+
     cmd = ("pct create {id} \"{tmpl}\" -storage {storage} -memory {ram} "
-           "-net0 \"name=eth0,bridge=vmbr{bridge},hwaddr=FA:4D:70:91:B8:6F,"
+           "-net0 \"name=eth0,bridge=vmbr{bridge},hwaddr={hwaddr},"
            "ip=dhcp,type=veth\" -hostname buildr -cores {cores} -rootfs 80 "
            "-mp0 \"{share},mp=/root/shared,ro=0\"")
     cmd = cmd.format(id = cont.id,
+                     hwaddr = machwaddr,
                      tmpl = tmpl,
                      storage = storage,
                      ram = cont.ram * 1024,
@@ -789,6 +1086,16 @@ if __name__ == "__main__":
                         help="Show version and exit",
                         action="store_true")
 
+    parser.add_argument("-M",
+                        "--mac",
+                        help="Specify network MAC Vendor ID in hex. "
+                        "6 Hex Characters without separators. "
+                        "e.g.: 00008F "
+                        "default: FA4D70 "
+                        "This is the first 6 characters of the VM MAC ID. ",
+                        type=str,
+                        default="FA4D70")
+
     parser.add_argument("-S",
                         "--share",
                         help="Path to shared folder",
@@ -800,6 +1107,20 @@ if __name__ == "__main__":
     pprint = prettyprint(args.verbose)
 
     header(pprint)
+
+    #validate mac-vendor id
+    if args.mac:
+        mm = args.mac
+        mm = mm.replace('-', '') # remove dashes
+        mm = mm.replace(':', '') # remove colons
+        if len(mm) > 6:
+            sys.exit("Vendor MAC ID too long.")
+        try:
+            int(mm, 16)
+        except ValueError:
+            sys.exit("Invalid Vendor MAC ID specified.")
+        # all checks pass, set mac_vendor
+        __MAC_VENDOR = mm.rjust(6, '0')
 
     pprint.dp(args)
     #pprint.dp(args.bridge)
