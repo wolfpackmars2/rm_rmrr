@@ -741,17 +741,17 @@ class pvemountpoint:
         ret: str = "-mp{} \"volume={}".format(self.id, self.volume)
         ret = "{},mp={}".format(ret, self.mp)
         if not self.acl is None:
-            ret = "{},acl={}".format(ret, pve().bool(self.acl))
+            ret = "{},acl={}".format(ret, pve().pvebool(self.acl))
         if not self.backup is None:
-            ret = "{},backup={}".format(ret, pve().bool(self.backup))
+            ret = "{},backup={}".format(ret, pve().pvebool(self.backup))
         if not self.quota is None:
-            ret = "{},quota={}".format(ret, pve().bool(self.quota))
+            ret = "{},quota={}".format(ret, pve().pvebool(self.quota))
         if not self.replicate is None:
-            ret = "{},replicate={}".format(ret, pve().bool(self.replicate))
+            ret = "{},replicate={}".format(ret, pve().pvebool(self.replicate))
         if not self.ro is None:
-            ret = "{},ro={}".format(ret, pve().bool(self.ro))
+            ret = "{},ro={}".format(ret, pve().pvebool(self.ro))
         if not self.shared is None:
-            ret = "{},shared={}".format(ret, pve().bool(self.shared))
+            ret = "{},shared={}".format(ret, pve().pvebool(self.shared))
         if not self.size is None:
             ret = "{},size={}".format(ret, self.size)
         ret = ret + "\""
@@ -807,7 +807,7 @@ class pvemountpoint:
 
     @shared.setter
     def shared(self, shared: bool):
-        self._shared = pve().isbool(shared)
+        self._shared = pve().bool(shared)
         return
 
     @property
@@ -816,7 +816,7 @@ class pvemountpoint:
 
     @ro.setter
     def ro(self, ro: bool):
-        self._ro = pve().isbool(ro)
+        self._ro = pve().bool(ro)
         return
 
     @property
@@ -825,7 +825,7 @@ class pvemountpoint:
 
     @replicate.setter
     def replicate(self, replicate: bool):
-        self._replicate = pve().isbool(replicate)
+        self._replicate = pve().bool(replicate)
         return
 
     @property
@@ -834,7 +834,7 @@ class pvemountpoint:
 
     @quota.setter
     def quota(self, quota: bool):
-        self._quota = pve().isbool(quota)
+        self._quota = pve().bool(quota)
         return
 
     @property
@@ -852,7 +852,7 @@ class pvemountpoint:
 
     @backup.setter
     def backup(self, backup: bool):
-        self._backup = pve().isbool(backup)
+        self._backup = pve().bool(backup)
         return
 
     @property
@@ -861,7 +861,7 @@ class pvemountpoint:
 
     @acl.setter
     def acl(self, acl: bool):
-        self._acl = pve().isbool(acl)
+        self._acl = pve().bool(acl)
         return
 
     @property
@@ -890,22 +890,27 @@ class pve:
     def __init__(self):
         pass
 
-    def isbool(self, var) -> bool:
-        var = self.bool(var)
-        if type(var) is str:
-            if var == "1":
-                return True
-            else:
-                return False
+    def bool(self, var) -> bool:
+        var = self.pvebool(var)
+        if var == "1": return True
+        elif var == "0": return False
         return None
 
-    def bool(self, var) -> bool:
+    def isbool(self, var) -> bool:
+        var = self.pvebool(var)
+        if var == "1" or var == "0":
+            return True
+        else:
+            return False
+        return None # this will never happen. IDE sugar only.
+
+    def pvebool(self, var) -> str:
         v = var
         t = type(v)  # t for Type
         if t is str or t is bool or t is int:
             if v == "1" or v == "t" or v == "T" or v == 1 or v is True:
                 return "1"
-            elif v == "0" or v == "f" or v == "F" or v == "0" or v is False:
+            elif v == "0" or v == "f" or v == "F" or v == 0 or v is False:
                 return "0"
         return None
 
