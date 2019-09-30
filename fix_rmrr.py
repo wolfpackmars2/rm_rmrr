@@ -1,8 +1,13 @@
 #!/usr/bin/env python3
-#==============================================================================
+# ==============================================================================
 # vim: softtabstop=4 shiftwidth=4 expandtab fenc=utf-8 cc=80 nu
-#==============================================================================
-import argparse, multiprocessing, os, sys, subprocess, pdb, ipaddress
+# ==============================================================================
+import argparse
+import multiprocessing
+import os
+import sys
+import subprocess
+import ipaddress
 from shlex import split
 from distutils.version import LooseVersion
 
@@ -10,8 +15,9 @@ root_path = os.path.dirname(os.path.realpath(__file__))
 __VERSION = "2019.08.14-0"
 __TEMPLATE_VERSION = 0
 __TSEARCH = "debian-10"
+__VENDOR_ID = "FA4D70"
 __TEMPLATE_NAME = "rmrr-" + str(__TEMPLATE_VERSION) + "-{tname}"
-__MAC_VENDOR = "FA4D70"
+
 
 class prettyprint:
     RC = ""
@@ -33,7 +39,7 @@ class prettyprint:
         is_a_tty = hasattr(sys.stdout, 'isatty') and sys.stdout.isatty()
         return supported_platform and is_a_tty
 
-    def p(self, msg, color = None, title = " Info"):
+    def p(self, msg, color=None, title=" Info"):
         if color is None:
             color = self.GC
         print(self.message.format(c=color, t=title, m=msg, e=self.EC))
@@ -47,18 +53,18 @@ class prettyprint:
         if self.debug:
             #print("{} * DEBUG{}: {}".format(self.BC, self.EC, msg))
             #print(self.message.format(c=self.BC, t='DEBUG', e=self.EC, m=msg))
-            self.p(msg = msg, color = self.BC, title = 'DEBUG')
+            self.p(msg=msg, color=self.BC, title='DEBUG')
         return
 
     def err(self, msg):
-        self.p(msg = msg, color = self.RC, title = 'ERROR')
+        self.p(msg=msg, color=self.RC, title='ERROR')
         return
 
     def warn(self, msg):
-        self.p(msg = msg, color = self.YC, title = ' WARN')
+        self.p(msg=msg, color=self.YC, title=' WARN')
         return
 
-    def __init__(self, debug = False):
+    def __init__(self, debug=False):
         self.debug = debug
         if self.supports_color():
             self.RC = '\033[1;31m'
@@ -157,7 +163,8 @@ class kernel:
 
     @pkg.setter
     def pkg(self, pkg):
-        if pkg == self._pkg: return
+        if pkg == self._pkg:
+            return
         self._pkg = pkg
         self._exists = None
         self._policy = None
@@ -172,7 +179,8 @@ class kernel:
 
     @hdr.setter
     def hdr(self, hdr):
-        if hdr == self._hdr: return
+        if hdr == self._hdr:
+            return
         self._hdr = hdr
         self._exists = None
         self._policy = None
@@ -388,10 +396,10 @@ class kernel:
         v_compare = [self.installed, self.available]
         v_compare.sort(key=LooseVersion, reverse=True)
         if self.installed == v_compare[0]:
-            #Installed version is the highest version available
+            # Installed version is the highest version available
             self._upgradable = False
         else:
-            #Available version is higher than installed version
+            # Available version is higher than installed version
             self._upgradable = True
         return self._upgradable
 
@@ -440,7 +448,53 @@ class kernels(dict):
 
 
 class pvenetwork:
+
+    # Class variables: shared by all instances
+    # https://pve.proxmox.com/pve-docs/pct.1.html
+    # https://pve.proxmox.com/wiki/Manual:_pct.conf
+    # https://pve.proxmox.com/pve-docs/pct-plain.html
+    # https://pve.proxmox.com/pve-docs/pve-admin-guide.html#pct_container_network
+
+    def __init__(self, id: int = 0, name: str = 'eth0', bridge: int = None,
+                 firewall: str = None, gateway: ipaddress.IPv4Address = None,
+                 hwaddr: str = None, ip: ipaddress.IPv4Address = 'dhcp',
+                 ip6: ipaddress.IPv6Address = None, mtu: int = None,
+                 ratelimit: int = None, tagid: int = None, trunks: int = None,
+                 nettype: str = 'veth'):
+        # Instance variables
+        self._id = None
+        self._name = None
+        self._bridge = None
+        self._firewall = None
+        self._gateway = None
+        self._ip = None
+        self._ip6 = None
+        self._mtu = None
+        self._ratelimit = None
+        self._tagid = None
+        self._trunks = None
+        self._nettype = None
+        self.id = id
+        self.name = name
+        self.bridge = bridge
+        self.firewall = firewall
+        self.gateway = gateway
+        self.hwaddr = hwaddr
+        self.ip = ip
+        self.ip6 = ip6
+        self.mtu = mtu
+        self.ratelimit = ratelimit
+        self.tagid = tagid
+        self.trunks = trunks
+        self.nettype = nettype
+        return
+
+    def __repr__(self):
+        return self.__str__()
+
     def __str__(self):
+        # target:
+        # -net0 "name=eth0,bridge=vmbr0,hwaddr=FA:4D:70:91:B8:6F,ip=dhcp,type=veth"
         ret = "-net{} \"name={}".format(self.id, self.name)
         if not self.bridge is None:
             ret = ret + ",bridge=vmbr{}".format(self.bridge)
@@ -480,23 +534,6 @@ class pvenetwork:
         ret = ret + "\""
         return ret
 
-    def __init__(self, id=0, name='eth0', bridge=None, firewall=None,
-                 gateway=None, hwaddr=None, ip='dhcp', ip6=None, mtu=None,
-                 ratelimit=None, tagid=None, trunks=None, nettype='veth'):
-        self.id = id
-        self.name = name
-        self.bridge = bridge
-        self.firewall = firewall
-        self.gateway = gateway
-        self.hwaddr = hwaddr
-        self.ip = ip
-        self.ip6 = ip6
-        self.mtu = mtu
-        self.ratelimit = ratelimit
-        self.tagid = tagid
-        self.trunks = trunks
-        self.nettype = nettype
-
     def tostring(self):
         return self.__str__()
 
@@ -506,11 +543,12 @@ class pvenetwork:
 
     @property
     def nettype(self):
-        return 'veth'
+        return self._nettype
 
     @nettype.setter
     def nettype(self, nettype):
         # only nettype possible is 'veth'
+        self._nettype = 'veth'
         return
 
     @property
@@ -553,7 +591,8 @@ class pvenetwork:
     @mtu.setter
     def mtu(self, mtu):
         if type(mtu) is int:
-            if mtu < 64: mtu = 64
+            if mtu < 64:
+                mtu = 64
             self._mtu = mtu
         else:
             self._mtu = None
@@ -599,7 +638,8 @@ class pvenetwork:
 
     @property
     def hwaddr(self):
-        if self._hwaddr is None: return None
+        if self._hwaddr is None:
+            return None
         ret = "{}:{}:{}:{}:{}:{}"
         hh = self._hwaddr.hex().rjust(12, '0').upper()
         ret = ret.format(hh[0:2],
@@ -646,7 +686,8 @@ class pvenetwork:
 
     @firewall.setter
     def firewall(self, firewall):
-        if not type(firewall) is bool: firewall = None
+        if not type(firewall) is bool:
+            firewall = None
         self._firewall = firewall
 
     @property
@@ -655,8 +696,10 @@ class pvenetwork:
 
     @bridge.setter
     def bridge(self, bridge):
-        if not type(bridge) is int: bridge = None
-        elif bridge < 0 or bridge > 4094: bridge = None
+        if not type(bridge) is int:
+            bridge = None
+        elif bridge < 0 or bridge > 4094:
+            bridge = None
         self._bridge = bridge
 
     @property
@@ -665,7 +708,8 @@ class pvenetwork:
 
     @name.setter
     def name(self, name):
-        if not type(name) is str: name = None
+        if not type(name) is str:
+            name = None
         self._name = name
 
     @property
@@ -674,14 +718,203 @@ class pvenetwork:
 
     @id.setter
     def id(self, id):
-        if id is None: id = 0
-        if not type(id) is int: id = 0
-        if id > 9 or id < 0: id = 0
+        if id is None:
+            id = 0
+        if not type(id) is int:
+            id = 0
+        if id > 9 or id < 0:
+            id = 0
         self._id = id
 
 
-class lxc(dict):
+class pvemountpoint:
+    # https://pve.proxmox.com/pve-docs/pve-admin-guide.html#pct_mount_points
 
+    def __repr__(self) -> str:
+        return self.__str__()
+
+    def __str__(self) -> str:
+        # mp[n]: [volume=]<volume> ,mp=<Path> [,acl=<1|0>] [,backup=<1|0>]
+        # [,mountoptions=<opt[;opt...]>] [,quota=<1|0>] [,replicate=<1|0>]
+        # [,ro=<1|0>] [,shared=<1|0>] [,size=<DiskSize>]
+        # "-mp0 \"{share},mp=/root/shared,ro=0\""
+        ret: str = "-mp{} \"volume={}".format(self.id, self.volume)
+        ret = "{},mp={}".format(ret, self.mp)
+        if not self.acl is None:
+            ret = "{},acl={}".format(ret, pve().bool(self.acl))
+        if not self.backup is None:
+            ret = "{},backup={}".format(ret, pve().bool(self.backup))
+        if not self.quota is None:
+            ret = "{},quota={}".format(ret, pve().bool(self.quota))
+        if not self.replicate is None:
+            ret = "{},replicate={}".format(ret, pve().bool(self.replicate))
+        if not self.ro is None:
+            ret = "{},ro={}".format(ret, pve().bool(self.ro))
+        if not self.shared is None:
+            ret = "{},shared={}".format(ret, pve().bool(self.shared))
+        if not self.size is None:
+            ret = "{},size={}".format(ret, self.size)
+        ret = ret + "\""
+        return ret
+
+    def __init__(self, id: int = 0, acl: bool = None, backup: bool = None,
+                 mp: str = None, quota: bool = None, replicate: bool = None,
+                 ro: bool = None, shared: bool = None, size: int = None,
+                 volume: str = None):
+        self._id = None
+        self._acl = None
+        self._backup = None
+        self._mp = None
+        self._quota = None
+        self._replicate = None
+        self._ro = None
+        self._shared = None
+        self._size = None
+        self._volume = None
+        self.id = id
+        self.acl = acl
+        self.backup = backup
+        self.mp = mp
+        self.quota = quota
+        self.replicate = replicate
+        self.ro = ro
+        self.shared = shared
+        self.size = size
+        self.volume = volume
+        return
+
+    @property
+    def volume(self) -> str:
+        return self._volume
+
+    @volume.setter
+    def volume(self, volume: str):
+        self._volume = volume
+        return
+
+    @property
+    def size(self) -> int:
+        return self._size
+
+    @size.setter
+    def size(self, size: int):
+        self._size = size
+        return
+
+    @property
+    def shared(self) -> bool:
+        return self._shared
+
+    @shared.setter
+    def shared(self, shared: bool):
+        self._shared = pve().isbool(shared)
+        return
+
+    @property
+    def ro(self) -> bool:
+        return self._ro
+
+    @ro.setter
+    def ro(self, ro: bool):
+        self._ro = pve().isbool(ro)
+        return
+
+    @property
+    def replicate(self) -> bool:
+        return self._replicate
+
+    @replicate.setter
+    def replicate(self, replicate: bool):
+        self._replicate = pve().isbool(replicate)
+        return
+
+    @property
+    def quota(self) -> bool:
+        return self._quota
+
+    @quota.setter
+    def quota(self, quota: bool):
+        self._quota = pve().isbool(quota)
+        return
+
+    @property
+    def mp(self) -> str:
+        return self._mp
+
+    @mp.setter
+    def mp(self, mp: str):
+        self._mp = mp
+        return
+
+    @property
+    def backup(self) -> bool:
+        return self._backup
+
+    @backup.setter
+    def backup(self, backup: bool):
+        self._backup = pve().isbool(backup)
+        return
+
+    @property
+    def acl(self) -> bool:
+        return self._acl
+
+    @acl.setter
+    def acl(self, acl: bool):
+        self._acl = pve().isbool(acl)
+        return
+
+    @property
+    def id(self) -> int:
+        return self._id
+
+    @id.setter
+    def id(self, id: int):
+        if not type(id) is int:
+            raise TypeError("pvemountpoint.id must be int")
+        if id < 0 or id > 9:
+            raise ValueError("pvemountpoint.id must be between 0 and 9")
+        self._id = id
+        return
+
+    @property
+    def string(self) -> str:
+        return self.__str__()
+
+    def tostring(self):
+        return self.__str__()
+
+
+class pve:
+
+    def __init__(self):
+        pass
+
+    def isbool(self, var) -> bool:
+        var = self.bool(var)
+        if type(var) is str:
+            if var == "1":
+                return True
+            else:
+                return False
+        return None
+
+    def bool(self, var) -> bool:
+        v = var
+        t = type(v)  # t for Type
+        if t is str or t is bool or t is int:
+            if v == "1" or v == "t" or v == "T" or v == 1 or v is True:
+                return "1"
+            elif v == "0" or v == "f" or v == "F" or v == "0" or v is False:
+                return "0"
+        return None
+
+
+class lxc(dict):
+    # "pct create {id} \"{tmpl}\" -storage {storage} -memory {ram} "
+    #      "-net0 \"name=eth0,bridge=vmbr{bridge},hwaddr=FA:4D:70:91:B8:6F,"
+    #      "ip=dhcp,type=veth\" -hostname buildr -cores {cores} -rootfs 80 "
+    #      "-mp0 \"{share},mp=/root/shared,ro=0\""
     def __repr__(self):
         return str(self.__dict__)
 
@@ -693,18 +926,21 @@ class lxc(dict):
             ret = ret + "{}: {}\n".format(str(x).rjust(maxl), str(d[x]))
         return ret.strip()
 
-    def __init__(self, lxc_id=500, shared_dir="shared", cores=None, ram=None,
-                 bridge_id=0, template="debian-10", storage="local-lvm",
-                 vendorid=None, macaddr=None):
+    def __init__(self, id: int = 500, cores: int = None, ram: int = None,
+                 template: str = "debian-10", storage: str = "local-lvm",
+                 **kwargs):
         self._id = lxc_id
         self.shared_dir = os.path.abspath(shared_dir)
         self.cores = cores
         self.ram = ram
-        if vendorid is None: vendorid = 'FA4D70'
+        if vendorid is None:
+            vendorid = 'FA4D70'
         vendorid = self.validate_mac(vendorid)
-        if not vendorid: vendorid = 'FA4D70'
+        if not vendorid:
+            vendorid = 'FA4D70'
         macaddr = self.validate_mac(macaddr)
-        if not macaddr: macaddr = self.validate_mac(hex(self.id))
+        if not macaddr:
+            macaddr = self.validate_mac(hex(self.id))
         self._vendor_id = vendorid
         if self.cores is None:
             c = multiprocessing.cpu_count()
@@ -724,13 +960,22 @@ class lxc(dict):
             if r > 8:
                 self.ram = 6
                 if self.cores > 80:
-                    self.cores = 80 #6GiB tested with up to 80 cores
+                    self.cores = 80  # 6GiB tested with up to 80 cores
             else:
                 self.ram = 4
                 if self.cores > 10:
-                    self.cores = 8 #limit cores due to low ram
+                    self.cores = 8  # limit cores due to low ram
         self.bridge_id = bridge_id
         #pprint.dp("lxc: {}".format(str(self.__dict__)))
+        return
+
+    @property
+    def nets(self) -> dict:
+        pass
+
+    @nets.setter
+    def nets(self, nets):
+        pass
 
     @property
     def networks(self):
@@ -744,7 +989,8 @@ class lxc(dict):
 
     @property
     def id(self):
-        if self._id is None: self._id = 500
+        if self._id is None:
+            self._id = 500
         return self._id
 
     @id.setter
@@ -766,7 +1012,8 @@ class lxc(dict):
         macaddr = macaddr.replace(':', '')
         macaddr = macaddr.replace('-', '')
         macaddr = macaddr.upper()
-        if len(macaddr) > 6: return False
+        if len(macaddr) > 6:
+            return False
         macaddr = macaddr.rjust(6, '0')
         try:
             int(macaddr, 16)
@@ -778,8 +1025,9 @@ class lxc(dict):
     def nic_vendor(self):
         return self._vendor_id
 
+
 def sp_run(cmd, capture_output=True, timeout=None,
-        check=False, encoding=None, text=True, **kwargs):
+           check=False, encoding=None, text=True, **kwargs):
     if type(cmd) is str:
         cmd = split(cmd)
     #pprint.dp("cmd: {}".format(cmd))
@@ -787,10 +1035,12 @@ def sp_run(cmd, capture_output=True, timeout=None,
                           timeout=timeout, check=check, encoding=encoding,
                           text=text, **kwargs)
 
+
 def header(pp):
     pprint.p("Script Version: {}".format(__VERSION))
     pprint.p("Template Version: {}".format(__TEMPLATE_VERSION))
     pprint.p("-------------------------------------------\n")
+
 
 def get_template(name='debian-10', update=False, storage=None):
     pprint.dp("get_template.name: {}".format(name))
@@ -855,7 +1105,7 @@ def get_template(name='debian-10', update=False, storage=None):
     res = subprocess.run(cmd, capture_output=True,
                          text=True).stdout.splitlines()[1:]
     pprint.dp("res: {}".format(res))
-    _AVAIL=[]
+    _AVAIL = []
     for x in res:
         pprint.dp("x: {}".format(x))
         if __TSEARCH in x:
@@ -869,11 +1119,12 @@ def get_template(name='debian-10', update=False, storage=None):
     pprint.dp("template: {}".format(_AVAIL[0]))
     return _AVAIL[0]
 
+
 def write_bootstrap_scripts(output_dir, target_kernel):
     """Creates the scripts to be run on the VM/LXC"""
-    ## Skeleton for new script files
+    # Skeleton for new script files
     #output_file = "{}/gitinit.sh".format(output_dir)
-    #script = ("#!/bin/sh -"
+    # script = ("#!/bin/sh -"
     #          "\n" + "if ! [ \"$(id -u)\" -eq 0 ]; then"
     #          "\n" + "    echo Must be root"
     #          "\n" + "    exit 1"
@@ -888,7 +1139,7 @@ def write_bootstrap_scripts(output_dir, target_kernel):
     #          "\n" + ""
     #          "\n" + "cd \"${startdir}\"")
     #pprint.dp("script: {}".format(script))
-    #with open(output_file, "w") as script_file:
+    # with open(output_file, "w") as script_file:
     #    script_file.write(script)
     #    pprint.dp("File written: {}".format(output_file))
 
@@ -896,60 +1147,60 @@ def write_bootstrap_scripts(output_dir, target_kernel):
     conf_file = "/root/shared/bootstrap.conf"
 
     output_file = "{}/bootstrap.sh".format(output_dir)
-    script=("#!/bin/sh -\n"
-            "if ! [ \"$(id -u)\" -eq 0 ]; then\n"
-            "    echo Must be root" + "\n"
-            "    exit 1" + "\n"
-            "fi" + "\n"
-            "startdir=$(pwd -P)" + "\n"
-            "gitdir=\"" + git_dir + "\"\n"
-            "conffile=\"" + conf_file + "\""
-            "\n" + "if [ -f \"${conffile}\" ]; then"
-            "\n" + "    source \"${conffile}\""
-            "\n" + "fi"
-            "# Check Locale" + "\n"
-            "if (locale 2>&1 | grep \"locale: Cannot set\"); then" + "\n"
-            "    echo \"Fixing Locales\"" + "\n"
-            "    echo \"en_US.UTF-8 UTF-8\" >> /etc/locale.gen" + "\n"
-            "    locale-gen" + "\n"
-            "    update-locale LANG=en_US.UTF-8 UTF-8" + "\n"
-            "    dpkg-reconfigure --frontend=noninteractive locales" + "\n"
-            "fi" + "\n"
-            "# Install lsbrelease" + "\n"
-            "if ! (command -v \"lsb_release\" > /dev/null 2>&1); then" + "\n"
-            "    apt update" + "\n"
-            "    apt install lsb-release -y --frontend=noninteractive" + "\n"
-            "fi" + "\n"
-            "# Check repos" + "\n"
-            "gpg_key=\"proxmox-ve-release-6.x.gpg\"" + "\n"
-            "pve_repo=\"deb http://download.proxmox.com/debian/pve buster "
-            "pve-no-subscription\"" + "\n"
-            "wget \"http://download.proxmox.com/debian/$gpg_key\" -O "
-            "\"/etc/apt/trusted.gpg.d/$gpg_key\"" + "\n"
-            "echo \"$pve_repo\" > /etc/apt/sources.list.d/pve.list" + "\n"
-            "apt-get update || (echo \"Something went wrong\" && exit 1)"
-            "\n" + "echo \"Installing apt updates\""
-            "\n" + "apt-get dist-upgrade -y --frontend=noninteractive"
-            "\n" + "pkgs=\"build-essential\""
-            "\n" + "pkgs=\"$pkgs patch\""
-            "\n" + "pkgs=\"$pkgs debhelper\""
-            "\n" + "pkgs=\"$pkgs libpve-common-perl\""
-            "\n" + "pkgs=\"$pkgs pve-kernel-5.0\""
-            "\n" + "pkgs=\"$pkgs pve-doc-generator\""
-            "\n" + "pkgs=\"$pkgs git\""
-            #"\n" + "pkgs=\"$pkgs \""
-            "\n" + "DEBIAN_FRONTEND=noninteractive apt-get install -y $pkgs"
-            "\n" + "if ! [ -d \"${gitdir}\" ]; then"
-            "\n" + "    mkdir -p \"${gitdir}\""
-            "\n" + "fi"
-            "\n" + "cd \"${gitdir}\""
-            #"\n" + "if ! [ -d \"kernel\" ]; then (mkdir \"kernel\"); fi"
-            #"\n" + "cd kernel"
-            "\n" + "git clone git://git.proxmox.com/git/pve-kernel.git"
-            "\n" + "if ! [ -f \"${conffile}\" ]; then"
-            "\n" + "    echo \"gitdir=${gitdir}\" > ${conffile}"
-            "\n" + "fi"
-            "\n" + "cd \"${startdir}\"")
+    script = ("#!/bin/sh -\n"
+              "if ! [ \"$(id -u)\" -eq 0 ]; then\n"
+              "    echo Must be root" + "\n"
+              "    exit 1" + "\n"
+              "fi" + "\n"
+              "startdir=$(pwd -P)" + "\n"
+              "gitdir=\"" + git_dir + "\"\n"
+              "conffile=\"" + conf_file + "\""
+              "\n" + "if [ -f \"${conffile}\" ]; then"
+              "\n" + "    source \"${conffile}\""
+              "\n" + "fi"
+              "# Check Locale" + "\n"
+              "if (locale 2>&1 | grep \"locale: Cannot set\"); then" + "\n"
+              "    echo \"Fixing Locales\"" + "\n"
+              "    echo \"en_US.UTF-8 UTF-8\" >> /etc/locale.gen" + "\n"
+              "    locale-gen" + "\n"
+              "    update-locale LANG=en_US.UTF-8 UTF-8" + "\n"
+              "    dpkg-reconfigure --frontend=noninteractive locales" + "\n"
+              "fi" + "\n"
+              "# Install lsbrelease" + "\n"
+              "if ! (command -v \"lsb_release\" > /dev/null 2>&1); then" + "\n"
+              "    apt update" + "\n"
+              "    apt install lsb-release -y --frontend=noninteractive" + "\n"
+              "fi" + "\n"
+              "# Check repos" + "\n"
+              "gpg_key=\"proxmox-ve-release-6.x.gpg\"" + "\n"
+              "pve_repo=\"deb http://download.proxmox.com/debian/pve buster "
+              "pve-no-subscription\"" + "\n"
+              "wget \"http://download.proxmox.com/debian/$gpg_key\" -O "
+              "\"/etc/apt/trusted.gpg.d/$gpg_key\"" + "\n"
+              "echo \"$pve_repo\" > /etc/apt/sources.list.d/pve.list" + "\n"
+              "apt-get update || (echo \"Something went wrong\" && exit 1)"
+              "\n" + "echo \"Installing apt updates\""
+              "\n" + "apt-get dist-upgrade -y --frontend=noninteractive"
+              "\n" + "pkgs=\"build-essential\""
+              "\n" + "pkgs=\"$pkgs patch\""
+              "\n" + "pkgs=\"$pkgs debhelper\""
+              "\n" + "pkgs=\"$pkgs libpve-common-perl\""
+              "\n" + "pkgs=\"$pkgs pve-kernel-5.0\""
+              "\n" + "pkgs=\"$pkgs pve-doc-generator\""
+              "\n" + "pkgs=\"$pkgs git\""
+              #"\n" + "pkgs=\"$pkgs \""
+              "\n" + "DEBIAN_FRONTEND=noninteractive apt-get install -y $pkgs"
+              "\n" + "if ! [ -d \"${gitdir}\" ]; then"
+              "\n" + "    mkdir -p \"${gitdir}\""
+              "\n" + "fi"
+              "\n" + "cd \"${gitdir}\""
+              #"\n" + "if ! [ -d \"kernel\" ]; then (mkdir \"kernel\"); fi"
+              #"\n" + "cd kernel"
+              "\n" + "git clone git://git.proxmox.com/git/pve-kernel.git"
+              "\n" + "if ! [ -f \"${conffile}\" ]; then"
+              "\n" + "    echo \"gitdir=${gitdir}\" > ${conffile}"
+              "\n" + "fi"
+              "\n" + "cd \"${startdir}\"")
     pprint.dp("script: {}".format(script))
     with open(output_file, "w") as script_file:
         script_file.write(script)
@@ -1003,37 +1254,38 @@ def create_lxc(cont, tmpl, storage='local-lvm'):
            "-net0 \"name=eth0,bridge=vmbr{bridge},hwaddr={hwaddr},"
            "ip=dhcp,type=veth\" -hostname buildr -cores {cores} -rootfs 80 "
            "-mp0 \"{share},mp=/root/shared,ro=0\"")
-    cmd = cmd.format(id = cont.id,
-                     hwaddr = machwaddr,
-                     tmpl = tmpl,
-                     storage = storage,
-                     ram = cont.ram * 1024,
-                     bridge = cont.bridge_id,
-                     cores = cont.cores,
-                     share = cont.shared_dir)
-    #cmd = cmd.format(id=cont.id, tmpl=tmpl, storage=storage, ram=cont.ram,
+    cmd = cmd.format(id=cont.id,
+                     hwaddr=machwaddr,
+                     tmpl=tmpl,
+                     storage=storage,
+                     ram=cont.ram * 1024,
+                     bridge=cont.bridge_id,
+                     cores=cont.cores,
+                     share=cont.shared_dir)
+    # cmd = cmd.format(id=cont.id, tmpl=tmpl, storage=storage, ram=cont.ram,
     #                 bridge=cont.bridge_id, cores=cont.cores,
     #                 share=cont.shared_dir)
     if os.path.exists(cont.shared_dir):
-        #shared_dir object already exists. is it a directory?
+        # shared_dir object already exists. is it a directory?
         if not os.path.isdir(cont.shared_dir):
             # shared_dir object exists but is not a directory. stop
             return False
         # shared directory exists, overwrite?
     else:
-        #shared_dir doesn't exist, create it
+        # shared_dir doesn't exist, create it
         os.makedirs(cont.shared_dir)
     pprint.dp("cmd: {}".format(cmd))
     cmd = split(cmd)
     pprint.dp("cmd: {}".format(cmd))
     pprint.p("Created LXC {}".format(cont.id))
-    #pdb.set_trace()
+    # pdb.set_trace()
     res = sp_run(cmd)
     if res.returncode == 0:
         pprint.dp("LXC Create result: {}".format(res.stdout))
         return True
     pprint.dp("LXC Create error: {}".format(res.stderr))
     return False
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Setup build environment for\
@@ -1108,11 +1360,11 @@ if __name__ == "__main__":
 
     header(pprint)
 
-    #validate mac-vendor id
+    # validate mac-vendor id
     if args.mac:
         mm = args.mac
-        mm = mm.replace('-', '') # remove dashes
-        mm = mm.replace(':', '') # remove colons
+        mm = mm.replace('-', '')  # remove dashes
+        mm = mm.replace(':', '')  # remove colons
         if len(mm) > 6:
             sys.exit("Vendor MAC ID too long.")
         try:
@@ -1123,8 +1375,8 @@ if __name__ == "__main__":
         __MAC_VENDOR = mm.rjust(6, '0')
 
     pprint.dp(args)
-    #pprint.dp(args.bridge)
-    #pprint.dp(pprint.supports_color())
+    # pprint.dp(args.bridge)
+    # pprint.dp(pprint.supports_color())
     tmpl = get_template()
     pprint.dp("tmpl: {}".format(tmpl))
     cont = lxc(lxc_id=args.id, shared_dir=args.share)
