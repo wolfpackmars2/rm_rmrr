@@ -534,6 +534,23 @@ class pvenetwork:
         ret = ret + "\""
         return ret
 
+    def defaults(self, containerid: int) -> str:
+        # sets good defaults and validates entries
+        # name should be eth<id>
+        # hwaddr should be 6 bytes
+        # hwaddr default should be fa4d70TUUUUU
+        # where T is the net<id> and UUUUU is the modulus of
+        # containerid and 1048575 in hex
+        if type(self.hwaddr) is None and type(containerid) is int:
+            vendor = 'fa4d70'
+            device = hex(containerid % 1048575).partition('x')[2].rjust(5, '0')
+            self.hwaddr = "{}{}{}".format(vendor, self.id, device)
+        if type(self.ip) is None and type(self.ip6) is None:
+            self.ip = "dhcp"
+        if self.name[0:3] == "eth" and int(self.name[3:]) != self.id:
+            self.name = "eth{}".format(self.id)
+        return self.string
+
     def tostring(self):
         return self.__str__()
 
@@ -725,6 +742,10 @@ class pvenetwork:
         if id > 9 or id < 0:
             id = 0
         self._id = id
+        #update name if needed
+        if self.name[0:3] == "eth":
+            self.name = "eth{}".format(id)
+        return
 
 
 class pvemountpoint:
@@ -915,7 +936,7 @@ class pve:
         return None
 
 
-class lxc(dict):
+class lxc:
     # "pct create {id} \"{tmpl}\" -storage {storage} -memory {ram} "
     #      "-net0 \"name=eth0,bridge=vmbr{bridge},hwaddr=FA:4D:70:91:B8:6F,"
     #      "ip=dhcp,type=veth\" -hostname buildr -cores {cores} -rootfs 80 "
@@ -963,15 +984,15 @@ class lxc(dict):
 
 
     def __repr__(self):
-        return str(self.__dict__)
+        return str(self)
 
     def __str__(self):
-        ret = ""
-        d = self.__dict__
-        maxl = len(max(d.keys())) + 4
-        for x in d:
-            ret = ret + "{}: {}\n".format(str(x).rjust(maxl), str(d[x]))
-        return ret.strip()
+        #ret = ""
+        #d = self.__dict__
+        #maxl = len(max(d.keys())) + 4
+        #for x in d:
+        #    ret = ret + "{}: {}\n".format(str(x).rjust(maxl), str(d[x]))
+        return vars(self) #ret.strip()
 
     def __init__(self, id: int = 500, cores: int = None, ram: int = None,
                  tmpl: str = "debian-10", storage: str = "local-lvm",
@@ -998,7 +1019,29 @@ class lxc(dict):
         self.fssize = fssize
         self.hostname = hostname
         self.description = description
+
+        #state variables
+        self._returnlist = []
         return
+
+    def runcmd(self, cmd: str) -> subprocess.CompletedProcess:
+        cmd = split(cmd)
+        if len(self._returnlist) > 9:
+            self._returnlist.pop()
+        self._returnlist.insert(0, sp_run(cmd))
+        return self._returnlist[0]
+
+    @property
+    def lastcmd(self) -> list:
+        if len(self._returnlist) > 0:
+            return self._returnlist[0].args
+        return None
+
+    @property
+    def lastresult(self) -> subprocess.CompletedProcess:
+        if len(self._returnlist) > 0:
+            return self._returnlist[0]
+        return None
 
     @property
     def configfile(self) -> str:
@@ -1029,10 +1072,7 @@ class lxc(dict):
         #   Configuration file 'nodes/pve/lxc/<id>.conf' does not exist
         if self.configfile() is None: return None
         cmd = "pct status {}".format(self.id)
-        ret = ""
-        #
-        #
-        ret = ret.partition(":")[2].strip()
+        ret = self.runcmd(cmd).stdout.partition(":")[2].strip())
         if not type(ret) is str or ret == "": return None
         return ret
 
@@ -1042,7 +1082,10 @@ class lxc(dict):
 
     @id.setter
     def id(self, id: int):
-        self._id = id
+        if type(id) is int:
+            self._id = id
+        else:
+            self._id = 500
         return
 
     @cores.getter
@@ -1051,6 +1094,21 @@ class lxc(dict):
 
     @cores.setter
     def cores(self, cores: int):
+        c = multiprocessing.cpu_count()
+        if cores is None or not type(cores) is int:
+            if c > 10:
+                self._cores = c - 4
+                return
+            elif c > 2:
+                self._cores = c - 2
+                return
+            else:
+                self._cores = c
+                return
+        elif cores > c:
+            self._cores = c
+            return
+        # if we get here, use the value passed in
         self._cores = cores
         return
 
@@ -1060,8 +1118,25 @@ class lxc(dict):
 
     @ram.setter
     def ram(self, ram: int):
-        self._ram = ram
-        return
+        # unfinished and untested
+        if self.ram is None:
+            cmd = split('free -t -m')
+            res = sp_run(cmd)
+            if res.returncode == 0:
+                r = int(res.stdout.splitlines()[-1].split()[3]) // 1024
+            else:
+                r = 4
+            if r > 8:
+                self.ram = 6
+                if self.cores > 80:
+                    # limit cores to 80 or increase ram to 16GB
+                    if r > 18:
+                        self.ram = 16
+                    else:
+                        self.cores = 80
+            else:
+                # we do not have more than 8GB of free ram; limit resources
+                self.ram = 4
 
     @tmpl.getter
     def tmpl(self) -> str:
@@ -1087,7 +1162,43 @@ class lxc(dict):
 
     @mp.setter
     def mp(self, mp: pvemountpoint):
-        self._mp = mp
+        t = type(mp)
+        if t is list and len(mp) > 0:
+            # self.mp is a list. each list object needs to be tested and any
+            # duplicate values will be rejected
+            validmounts = []
+            mountids = set(None)
+            mountmps = set(None)
+            for mount in mp:
+                # mountpoint requirements
+                # mount.id is not null and not duplicated in the list(mp)
+                # mount.volume is not null and not duplicated in the list
+                # mount.mp is not null and not duplicated in the list
+                if type(mount) is pvemountpoint \
+                   and not mount.id in mountids \
+                   and not mount.volume in mountids \
+                   and not mount.mp in mountmps:
+                    # tests passed, update the sets and add to the validmounts
+                    # list.
+                    mountids.add(mount.id)
+                    mountids.add(mount.volume)
+                    mountmps.add(mount.mp)
+                    validmounts.append(mount)
+            if len(validmounts) > 0:
+                # at least one mp in the list is valid. replace the object in
+                # self with the new list containing validated pvemountpoints.
+                self._mp = validmounts
+            else:
+                # self.mp is invalid type. set to none. test failed
+                self._mp = None
+        elif t is pvemountpoint:
+            if mp.id is None or mp.volume is None or mp.mp is None:
+                # mountpoint cannot have null id, volume or mountpoint
+                # test failed; set mp to none
+                self._mp = None
+        else:
+            # passed in value is not a list or a pvemountpoint, thus invalid
+            self._mp = None
         return
 
     @net.getter
@@ -1096,8 +1207,28 @@ class lxc(dict):
 
     @net.setter
     def net(self, net: pvenetwork):
-        self._net = net
-        return
+        t = type(self.net)
+        # validate network settings
+        if t is list and len(self.net) > 0:
+            validnets = []
+            netids = set(None)
+            for net in self.net:
+                if type(net) is pvenetwork:
+                    net.defaults()
+                    if not net.id in netids and not net.hwaddr in netids \
+                       and not net.name in netids:
+                        netids.add(net.id)
+                        netids.add(net.hwaddr)
+                        netids.add(net.name)
+                        validnets.append(net)
+            if len(validnets) > 0:
+                self.net = validnets
+            else:
+                self.net = None
+        elif t is pvenetwork:
+            self.net.defaults()
+        else:
+            self.net = None
 
     @fssize.getter
     def fssize(self) -> int:
@@ -1145,103 +1276,6 @@ class lxc(dict):
     def destroy() -> bool:
         # True on success or if didn't exist already, otherwise str error
         pass
-
-        self._id = id
-        if not mp is None:
-            self._mp = mp
-        self.cores = cores
-        self.ram = ram
-        if vendorid is None:
-            vendorid = 'FA4D70'
-        vendorid = self.validate_mac(vendorid)
-        if not vendorid:
-            vendorid = 'FA4D70'
-        macaddr = self.validate_mac(macaddr)
-        if not macaddr:
-            macaddr = self.validate_mac(hex(self.id))
-        self._vendor_id = vendorid
-        if self.cores is None:
-            c = multiprocessing.cpu_count()
-            if c > 10:
-                self.cores = c - 4
-            elif c > 2:
-                self.cores = c - 2
-            else:
-                self.cores = c
-        if self.ram is None:
-            cmd = split('free -t -m')
-            res = subprocess.run(cmd, capture_output=True, text=True)
-            if res.returncode == 0:
-                r = int(res.stdout.splitlines()[-1].split()[3]) // 1024
-            else:
-                r = 4
-            if r > 8:
-                self.ram = 6
-                if self.cores > 80:
-                    self.cores = 80  # 6GiB tested with up to 80 cores
-            else:
-                self.ram = 4
-                if self.cores > 10:
-                    self.cores = 8  # limit cores due to low ram
-        self.bridge_id = bridge_id
-        #pprint.dp("lxc: {}".format(str(self.__dict__)))
-        return
-
-    @property
-    def nets(self) -> dict:
-        pass
-
-    @nets.setter
-    def nets(self, nets):
-        pass
-
-    @property
-    def networks(self):
-        # net0 - net9
-        return self._networks
-
-    @property
-    def mountpoints(self):
-        # mp0 - mp9
-        return self._mountpoints
-
-    @property
-    def id(self):
-        if self._id is None:
-            self._id = 500
-        return self._id
-
-    @id.setter
-    def id(self, id):
-        self._id = abs(int(id))
-
-    def id_to_macaddr(self):
-        return hex(self.id % int('fffff', 16))
-
-    def validate_mac(self, macaddr):
-        """Verify mac address portion is valid. A mac address portion is 6 HEX
-        characters max and can be converted to an integer.
-        Example: 7F8A80
-        Type: String
-        Returns: False if invalid, macaddr cleaned and capitalized if valid."""
-        if 'x' in macaddr:
-            # handle 0xABCD strings
-            macaddr = macaddr.partition('x')[2]
-        macaddr = macaddr.replace(':', '')
-        macaddr = macaddr.replace('-', '')
-        macaddr = macaddr.upper()
-        if len(macaddr) > 6:
-            return False
-        macaddr = macaddr.rjust(6, '0')
-        try:
-            int(macaddr, 16)
-        except ValueError:
-            return False
-        return macaddr
-
-    @property
-    def nic_vendor(self):
-        return self._vendor_id
 
 
 def sp_run(cmd, capture_output=True, timeout=None,
