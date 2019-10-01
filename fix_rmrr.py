@@ -920,6 +920,48 @@ class lxc(dict):
     #      "-net0 \"name=eth0,bridge=vmbr{bridge},hwaddr=FA:4D:70:91:B8:6F,"
     #      "ip=dhcp,type=veth\" -hostname buildr -cores {cores} -rootfs 80 "
     #      "-mp0 \"{share},mp=/root/shared,ro=0\""
+
+    # documenting new lxc design
+    # prop: net = pvenetwork or List[of pvenetwork] or None
+    # prop: mp = pvemountpoint or List[of pvemountpoint] or None
+    # prop: rootfs = pvemountpoint or None out=reqd
+    # prop: hostname = str or None
+    # prop: id = int; valid from 0 - 4094 or None out=reqd
+    # prop: sshkey = str or None or List[of str]?
+    # prop: privileged = bool or None
+    # prop: cores = int or None
+    # prop: cpulimit = decimal or None
+    # prop: cpuunits = int; pve default is 1024
+    # prop: onboot = bool or None(inherit); start at boot?; default False
+    # prop: bootorder = int > 0; default None
+    # prop: bootdelay = int > 0 or None; seconds
+    # prop: deadtimeout = int > 0 or None; pve default is 60; seconds to wait
+    #       after shutting down container before the shutdown action is
+    #       reported as 'failed'
+    # prop: description = str or None
+    # prop: nesting = bool or None (nesting VM)
+    # prop: keyctl = bool or None
+    # prop: fuse = bool or None
+    # prop: force = bool, default false. may not implement
+    # prop: memory = int or None (use PVE default). ram in MB
+    # prop: ostype = str [alpine|archlinux|centos|debian|fedora|gentoo|
+    # prop:               opensuse|ubuntu|unmanaged] or None(inherit)
+    # prop: password = str or None (root password)
+    # prop: template = str or None out=reqd
+    # prop: searchdomain = str or None
+    # prop: ssh-public-keys = str or None or List[of str]. path to keyfile(s).
+    #       path to openssh pubkey file. can contain multiple keys. only 1 file
+    # prop: start = bool or none(inherit). Start after created
+    # prop: startup = str or None [order=bootorder,up=bootdealy,down=deadt/o]
+    # prop: storage = str or None(inherit) default pve is 'local'
+    # prop: swap = int or None(inherit) vm swap in mb. pve default = 512MB
+    # prop: tty = int 0 to 6 or None(inherit) pve default is 2
+    #       count of tty available to container
+    # prop: unique = bool or None. assign random ethernet address.
+    #       requires restore option
+
+
+
     def __repr__(self):
         return str(self.__dict__)
 
@@ -932,10 +974,181 @@ class lxc(dict):
         return ret.strip()
 
     def __init__(self, id: int = 500, cores: int = None, ram: int = None,
-                 template: str = "debian-10", storage: str = "local-lvm",
-                 **kwargs):
-        self._id = lxc_id
-        self.shared_dir = os.path.abspath(shared_dir)
+                 tmpl: str = "debian-10", storage: str = "local-lvm",
+                 mp: pvemountpoint = None, net: pvenetwork = None,
+                 fssize: int = 80, hostname: str = None,
+                 description: str = None):
+        self._id = None
+        self._cores = None
+        self._ram = None
+        self._tmpl = None
+        self._storage = None
+        self._mp = None
+        self._net = None
+        self._fssize = None
+        self._hostname = None
+        self._description = None
+        self.id = id
+        self.cores = cores
+        self.ram = ram
+        self.tmpl = tmpl
+        self.storage = storage
+        self.mp = mp
+        self.net = net
+        self.fssize = fssize
+        self.hostname = hostname
+        self.description = description
+        return
+
+    @property
+    def configfile(self) -> str:
+        # Get the location of the LXC config file
+        # found in /etc/pve/nodes/pve/lxc/<id>.conf
+        # if file exists, return path the file as str
+        # otherwise return None
+        return "/etc/pve/nodes/pve/lxc/{}.conf".format(self.id)
+
+    @property
+    def configfilecontents(self) -> str:
+        # if configfile exists, return its contents
+        # otherwise return None
+        cfg = self.configfile()
+        if cfg is None: return None
+        ret = None
+        with open(cfg, 'r') as cfgfile:
+            ret = cfgfile.read()
+        return ret
+
+    @property
+    def status(self) -> str:
+        # returns the status of the container or None if the container doesn't
+        # exist.
+        # if configfile exists, run pct status <id> which returns one of
+        #   status: stopped
+        #   status: running
+        #   Configuration file 'nodes/pve/lxc/<id>.conf' does not exist
+        if self.configfile() is None: return None
+        cmd = "pct status {}".format(self.id)
+        ret = ""
+        #
+        #
+        ret = ret.partition(":")[2].strip()
+        if not type(ret) is str or ret == "": return None
+        return ret
+
+    @id.getter
+    def id(self) -> int:
+        return self._id
+
+    @id.setter
+    def id(self, id: int):
+        self._id = id
+        return
+
+    @cores.getter
+    def cores(self) -> int:
+        return self._cores
+
+    @cores.setter
+    def cores(self, cores: int):
+        self._cores = cores
+        return
+
+    @ram.getter
+    def ram(self) -> int:
+        return self._ram
+
+    @ram.setter
+    def ram(self, ram: int):
+        self._ram = ram
+        return
+
+    @tmpl.getter
+    def tmpl(self) -> str:
+        return self._tmpl
+
+    @tmpl.setter
+    def tmpl(self, tmpl: str):
+        self._tmpl = tmpl
+        return
+
+    @storage.getter
+    def storage(self) -> str:
+        return self._storage
+
+    @storage.setter
+    def storage(self, storage: str):
+        self._storage = storage
+        return
+
+    @mp.getter
+    def mp(self) -> pvemountpoint:
+        return self._mp
+
+    @mp.setter
+    def mp(self, mp: pvemountpoint):
+        self._mp = mp
+        return
+
+    @net.getter
+    def net(self) -> pvenetwork:
+        return self._net
+
+    @net.setter
+    def net(self, net: pvenetwork):
+        self._net = net
+        return
+
+    @fssize.getter
+    def fssize(self) -> int:
+        return self._fssize
+
+    @fssize.setter
+    def fssize(self, fssize: int):
+        self._fssize = fssize
+        return
+
+    @hostname.getter
+    def hostname(self) -> str:
+        return self._hostname
+
+    @hostname.setter
+    def hostname(self, hostname: str):
+        self._hostname = hostname
+        return
+
+    @description.getter
+    def description(self) -> str:
+        return self._description
+
+    @description.setter
+    def description(self, description: str):
+        self._description = description
+        return
+
+    def start() -> bool:
+        # return True on success, error otherwise
+        pass
+
+    def stop() -> bool:
+        # True on success, str error otherwise
+        pass
+
+    def restart() -> bool:
+        # True on success, str error otherwise
+        pass
+
+    def create(overwrite: bool = False) -> bool:
+        # True on success, str error otherwise
+        pass
+
+    def destroy() -> bool:
+        # True on success or if didn't exist already, otherwise str error
+        pass
+
+        self._id = id
+        if not mp is None:
+            self._mp = mp
         self.cores = cores
         self.ram = ram
         if vendorid is None:
