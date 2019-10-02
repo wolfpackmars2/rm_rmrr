@@ -341,6 +341,9 @@ class kernel:
             if len(res) > 0:
                 with open(res[0].strip(), "r") as f:
                     slines = f.readlines()
+                    self._source = None # set default as backup
+                    self._git_url = None # same with git url and hash
+                    self._git_hash = None
                     for x in slines:
                         x = x.strip()
                         if x.startswith("git clone"):
@@ -455,7 +458,7 @@ class pvenetwork:
     # https://pve.proxmox.com/pve-docs/pct-plain.html
     # https://pve.proxmox.com/pve-docs/pve-admin-guide.html#pct_container_network
 
-    def __init__(self, id: int = 0, name: str = 'eth0', bridge: int = None,
+    def __init__(self, id: int = 0, name: str = 'eth', bridge: int = None,
                  firewall: str = None, gateway: ipaddress.IPv4Address = None,
                  hwaddr: str = None, ip: ipaddress.IPv4Address = 'dhcp',
                  ip6: ipaddress.IPv6Address = None, mtu: int = None,
@@ -727,6 +730,10 @@ class pvenetwork:
     def name(self, name):
         if not type(name) is str:
             name = None
+            return
+        if name[0:3] == 'eth':
+            self._name = f'eth{self.id}'
+            return
         self._name = name
 
     @property
@@ -743,7 +750,7 @@ class pvenetwork:
             id = 0
         self._id = id
         #update name if needed
-        if self.name[0:3] == "eth":
+        if type(self.name) is str and self.name[0:3] == "eth":
             self.name = "eth{}".format(id)
         return
 
@@ -1049,13 +1056,17 @@ class lxc:
         # found in /etc/pve/nodes/pve/lxc/<id>.conf
         # if file exists, return path the file as str
         # otherwise return None
-        return "/etc/pve/nodes/pve/lxc/{}.conf".format(self.id)
+        ret = "/etc/pve/nodes/pve/lxc/{}.conf".format(self.id)
+        if os.path.isfile(ret):
+            return ret
+        else:
+            return None
 
     @property
     def configfilecontents(self) -> str:
         # if configfile exists, return its contents
         # otherwise return None
-        cfg = self.configfile()
+        cfg = self.configfile
         if cfg is None: return None
         ret = None
         with open(cfg, 'r') as cfgfile:
@@ -1070,13 +1081,13 @@ class lxc:
         #   status: stopped
         #   status: running
         #   Configuration file 'nodes/pve/lxc/<id>.conf' does not exist
-        if self.configfile() is None: return None
+        if self.configfile is None: return None
         cmd = "pct status {}".format(self.id)
-        ret = self.runcmd(cmd).stdout.partition(":")[2].strip())
+        ret = self.runcmd(cmd).stdout.partition(":")[2].strip()
         if not type(ret) is str or ret == "": return None
         return ret
 
-    @id.getter
+    @property
     def id(self) -> int:
         return self._id
 
@@ -1088,7 +1099,7 @@ class lxc:
             self._id = 500
         return
 
-    @cores.getter
+    @property
     def cores(self) -> int:
         return self._cores
 
@@ -1112,14 +1123,14 @@ class lxc:
         self._cores = cores
         return
 
-    @ram.getter
+    @property
     def ram(self) -> int:
         return self._ram
 
     @ram.setter
     def ram(self, ram: int):
         # unfinished and untested
-        if self.ram is None:
+        if ram is None:
             cmd = split('free -t -m')
             res = sp_run(cmd)
             if res.returncode == 0:
@@ -1127,18 +1138,19 @@ class lxc:
             else:
                 r = 4
             if r > 8:
-                self.ram = 6
+                self._ram = 6
                 if self.cores > 80:
                     # limit cores to 80 or increase ram to 16GB
                     if r > 18:
-                        self.ram = 16
+                        self._ram = 16
                     else:
                         self.cores = 80
             else:
                 # we do not have more than 8GB of free ram; limit resources
-                self.ram = 4
+                self._ram = 4
+        return
 
-    @tmpl.getter
+    @property
     def tmpl(self) -> str:
         return self._tmpl
 
@@ -1147,7 +1159,7 @@ class lxc:
         self._tmpl = tmpl
         return
 
-    @storage.getter
+    @property
     def storage(self) -> str:
         return self._storage
 
@@ -1156,7 +1168,7 @@ class lxc:
         self._storage = storage
         return
 
-    @mp.getter
+    @property
     def mp(self) -> pvemountpoint:
         return self._mp
 
@@ -1188,49 +1200,65 @@ class lxc:
                 # at least one mp in the list is valid. replace the object in
                 # self with the new list containing validated pvemountpoints.
                 self._mp = validmounts
+                return
             else:
                 # self.mp is invalid type. set to none. test failed
                 self._mp = None
+                return
         elif t is pvemountpoint:
             if mp.id is None or mp.volume is None or mp.mp is None:
                 # mountpoint cannot have null id, volume or mountpoint
                 # test failed; set mp to none
                 self._mp = None
+                return
+            else:
+                self._mp = mp
+                return
         else:
             # passed in value is not a list or a pvemountpoint, thus invalid
             self._mp = None
         return
 
-    @net.getter
+    @property
     def net(self) -> pvenetwork:
         return self._net
 
     @net.setter
     def net(self, net: pvenetwork):
-        t = type(self.net)
+        t = type(net)
         # validate network settings
-        if t is list and len(self.net) > 0:
+        if t is list and len(net) > 0:
             validnets = []
             netids = set(None)
-            for net in self.net:
-                if type(net) is pvenetwork:
-                    net.defaults()
-                    if not net.id in netids and not net.hwaddr in netids \
-                       and not net.name in netids:
-                        netids.add(net.id)
-                        netids.add(net.hwaddr)
-                        netids.add(net.name)
-                        validnets.append(net)
+            for n in net:
+                if type(n) is pvenetwork:
+                    if n.hwaddr is None:
+                        n.hwaddr = "fa4d70000000"
+                    n.defaults(self.id)
+                    if not n.id in netids and not n.hwaddr in netids \
+                       and not n.name in netids:
+                        netids.add(n.id)
+                        netids.add(n.hwaddr)
+                        netids.add(n.name)
+                        validnets.append(n)
             if len(validnets) > 0:
-                self.net = validnets
+                self._net = validnets
+                return
             else:
-                self.net = None
+                self._net = None
+                return
         elif t is pvenetwork:
-            self.net.defaults()
+            if net.hwaddr is None:
+                n.hwaddr = "fa4d70000000"
+            net.defaults(self.id)
+            self._net = net
+            return
         else:
-            self.net = None
+            self._net = None
+            return
+        return
 
-    @fssize.getter
+    @property
     def fssize(self) -> int:
         return self._fssize
 
@@ -1239,7 +1267,7 @@ class lxc:
         self._fssize = fssize
         return
 
-    @hostname.getter
+    @property
     def hostname(self) -> str:
         return self._hostname
 
@@ -1248,7 +1276,7 @@ class lxc:
         self._hostname = hostname
         return
 
-    @description.getter
+    @property
     def description(self) -> str:
         return self._description
 
