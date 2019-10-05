@@ -8,6 +8,7 @@ import os
 import sys
 import subprocess
 import ipaddress
+import inspect
 from shlex import split
 from distutils.version import LooseVersion
 
@@ -427,7 +428,7 @@ class kernel:
 
 class kernels(dict):
     def __repr__(self):
-        return None
+        return str(self.list)
 
     def __str__(self):
         ret = ""
@@ -537,6 +538,12 @@ class pvenetwork:
         ret = ret + "\""
         return ret
 
+    def gethwaddr(self, containerid: int) -> str:
+        vendor = 'fa4d70'
+        device = hex(containerid % 1048575).partition('x')[2].rjust(5, '0')
+        self.hwaddr = "{}{}{}".format(vendor, self.id, device)
+        return self.hwaddr
+
     def defaults(self, containerid: int) -> str:
         # sets good defaults and validates entries
         # name should be eth<id>
@@ -544,10 +551,15 @@ class pvenetwork:
         # hwaddr default should be fa4d70TUUUUU
         # where T is the net<id> and UUUUU is the modulus of
         # containerid and 1048575 in hex
+        print("type(self.hwaddr){}, type(containerid): {}".format(self.hwaddr,
+                                                                  containerid))
         if type(self.hwaddr) is None and type(containerid) is int:
             vendor = 'fa4d70'
+            print("vendor: {}".format(vendor))
             device = hex(containerid % 1048575).partition('x')[2].rjust(5, '0')
+            print("device: {}".format(device))
             self.hwaddr = "{}{}{}".format(vendor, self.id, device)
+            print("{}{}{}".format(vendor, self.id, device))
         if type(self.ip) is None and type(self.ip6) is None:
             self.ip = "dhcp"
         if self.name[0:3] == "eth" and int(self.name[3:]) != self.id:
@@ -999,7 +1011,13 @@ class lxc:
         #maxl = len(max(d.keys())) + 4
         #for x in d:
         #    ret = ret + "{}: {}\n".format(str(x).rjust(maxl), str(d[x]))
-        return vars(self) #ret.strip()
+        var = inspect.classify_class_attrs(lxc)
+        ret = ""
+        for item in var:
+            if item.kind == 'property':
+                val = getattr(self, item.name)
+                ret = f"{ret}{item.name}: {val}\n"
+        return ret.strip()
 
     def __init__(self, id: int = 500, cores: int = None, ram: int = None,
                  tmpl: str = "debian-10", storage: str = "local-lvm",
@@ -1249,8 +1267,8 @@ class lxc:
                 return
         elif t is pvenetwork:
             if net.hwaddr is None:
-                n.hwaddr = "fa4d70000000"
-            net.defaults(self.id)
+                net.gethwaddr(self.id)
+            #net.defaults(self.id)
             self._net = net
             return
         else:
@@ -1297,17 +1315,19 @@ class lxc:
         # True on success, str error otherwise
         pass
 
-    def create(overwrite: bool = False) -> bool:
+    def create(overwrite: bool = False, test: bool = False) -> bool:
         # True on success, str error otherwise
+        # test: output shell command to console but don't execute
         pass
 
-    def destroy() -> bool:
+    def destroy(test: bool = False) -> bool:
         # True on success or if didn't exist already, otherwise str error
         pass
 
 
 def sp_run(cmd, capture_output=True, timeout=None,
-           check=False, encoding=None, text=True, **kwargs):
+           check=False, encoding=None, 
+           text=True, **kwargs) -> subprocess.CompletedProcess:
     if type(cmd) is str:
         cmd = split(cmd)
     #pprint.dp("cmd: {}".format(cmd))
@@ -1659,12 +1679,14 @@ if __name__ == "__main__":
     # pprint.dp(pprint.supports_color())
     tmpl = get_template()
     pprint.dp("tmpl: {}".format(tmpl))
-    cont = lxc(lxc_id=args.id, shared_dir=args.share)
+    #cont = lxc(lxc_id=args.id, shared_dir=args.share)
+    cont = lxc(id=args.id, net=pvenetwork(bridge=0, ip='dhcp'),
+               mp=pvemountpoint(volume=args.share, mp="/root/shared", ro=0))
     pprint.dp("cont: {}".format(cont))
-    if create_lxc(cont, tmpl):
-        cmd = split('pct start {}'.format(cont.id))
-        res = sp_run(cmd)
-        pprint.dp("cmd output: {}".format(res))
+    #if create_lxc(cont, tmpl):
+    #    cmd = split('pct start {}'.format(cont.id))
+    #    res = sp_run(cmd)
+    #    pprint.dp("cmd output: {}".format(res))
     k = kernels()
     l = kernels.list
     l.sort(key=LooseVersion, reverse=True)
