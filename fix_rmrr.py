@@ -1002,8 +1002,8 @@ class lxc:
 
 
 
-    def __repr__(self):
-        return str(self)
+    #def __repr__(self):
+    #    return self.create(test=True)
 
     def __str__(self):
         #ret = ""
@@ -1024,6 +1024,7 @@ class lxc:
                  mp: pvemountpoint = None, net: pvenetwork = None,
                  fssize: int = 80, hostname: str = None,
                  description: str = None):
+        self._returnlist = []
         self._id = None
         self._cores = None
         self._ram = None
@@ -1044,9 +1045,6 @@ class lxc:
         self.fssize = fssize
         self.hostname = hostname
         self.description = description
-
-        #state variables
-        self._returnlist = []
         return
 
     def runcmd(self, cmd: str) -> subprocess.CompletedProcess:
@@ -1147,7 +1145,7 @@ class lxc:
 
     @ram.setter
     def ram(self, ram: int):
-        # unfinished and untested
+        # in GB
         if ram is None:
             cmd = split('free -t -m')
             res = sp_run(cmd)
@@ -1156,16 +1154,18 @@ class lxc:
             else:
                 r = 4
             if r > 8:
-                self._ram = 6
+                self._ram = 6 * 1024
                 if self.cores > 80:
                     # limit cores to 80 or increase ram to 16GB
                     if r > 18:
-                        self._ram = 16
+                        self._ram = 16 * 1024
                     else:
                         self.cores = 80
             else:
                 # we do not have more than 8GB of free ram; limit resources
-                self._ram = 4
+                self._ram = 4 * 1024
+        else:
+            self._ram = ram * 1024
         return
 
     @property
@@ -1174,7 +1174,28 @@ class lxc:
 
     @tmpl.setter
     def tmpl(self, tmpl: str):
-        self._tmpl = tmpl
+        templates = []
+        res = self.runcmd('pveam update')
+        res = self.runcmd('pveam available -section system')
+        for x in res.stdout.splitlines():
+            x = x.lower()
+            if tmpl in x:
+                templates.append(x.rpartition(" ")[2].strip())
+        if len(templates) > 0:
+            templates.sort(key=LooseVersion, reverse=True)
+            self.runcmd(f"pveam download local {templates[0]}")
+        res = self.runcmd("pveam list local").stdout.partition("\n")[2]
+        templates = []
+        for x in res.splitlines():
+            if tmpl in x:
+                templates.append(x.split()[0])
+        if len(templates) > 0:
+            templates.sort(key=LooseVersion, reverse=True)
+            self._tmpl = templates[0]
+            return
+        else:
+            self._tmpl = None
+            return
         return
 
     @property
@@ -1303,26 +1324,69 @@ class lxc:
         self._description = description
         return
 
-    def start() -> bool:
+    def start(self) -> subprocess.CompletedProcess:
         # return True on success, error otherwise
-        pass
+        cmd = f"pct start {self.id}"
+        return self.runcmd(cmd)
 
-    def stop() -> bool:
-        # True on success, str error otherwise
-        pass
+    def stop(self) -> subprocess.CompletedProcess:
+        cmd = f"pct stop {self.id}"
+        return self.runcmd(cmd)
 
-    def restart() -> bool:
-        # True on success, str error otherwise
-        pass
+    def restart(self) -> subprocess.CompletedProcess:
+        self.stop()
+        self.start()
+        ret = self._returnlist[0:2]
+        ret.reverse()
+        return ret
 
-    def create(overwrite: bool = False, test: bool = False) -> bool:
+    def create(self, overwrite: bool = False,
+               test: bool = False) -> subprocess.CompletedProcess:
         # True on success, str error otherwise
         # test: output shell command to console but don't execute
-        pass
+        if not self.hostname: self.hostname = "bildr"
+        cmd = f"pct create {self.id} \"{self.tmpl}\" -storage {self.storage} "
+        cmd = f"{cmd} -memory {self.ram} -hostname {self.hostname} "
+        cmd = f"{cmd} -cores {self.cores} -rootfs {self.fssize}"
+        if self.mp:
+            if type(self.mp) is list:
+                for i in self.mp:
+                    cmd = f"{cmd} {i}"
+            else:
+                cmd = f"{cmd} {self.mp}"
+        if self.net:
+            if type(self.net) is list:
+                for i in self.net:
+                    cmd = f"{cmd} {i}"
+            else:
+                cmd = f"{cmd} {self.net}"
+        if not test:
+            # run the command
+            if overwrite and self.status:
+                # status returns None if VM doesn't exist
+                self.destroy()
+            return runcmd(cmd)
+        return cmd
 
-    def destroy(test: bool = False) -> bool:
-        # True on success or if didn't exist already, otherwise str error
-        pass
+    def destroy(self, test: bool = True) -> subprocess.CompletedProcess:
+        cmd = f"pct destroy {self.id}"
+        if test:
+            returnstr = f"No actions were taken. Call 'destroy(test=False)' to"
+            returnstr = f"{returnstr} run the following command:\n{cmd}"
+            return returnstr
+        self.stop()
+        return self.runcmd(cmd)
+
+    def set_defaults(self):
+        if self.id == 0: self.id = 500
+        if self.net is None: self.net = pvenetwork(bridge=0, id=0, ip="dhcp")
+        if self.mp is None:
+            self.mp = pvemountpoint(ro=0, id=0, mp='/root/shared',
+                                    volume = f"{root_path}/shared")
+        if self.hostname is None: self.hostname = "bildr"
+        if self.tmpl is None: self.tmpl = "debian-10"
+        if self.storage is None:
+            self.storage = "local-lvm"
 
 
 def sp_run(cmd, capture_output=True, timeout=None,
@@ -1677,16 +1741,22 @@ if __name__ == "__main__":
     pprint.dp(args)
     # pprint.dp(args.bridge)
     # pprint.dp(pprint.supports_color())
-    tmpl = get_template()
-    pprint.dp("tmpl: {}".format(tmpl))
+    #tmpl = get_template()
+    #pprint.dp("tmpl: {}".format(tmpl))
     #cont = lxc(lxc_id=args.id, shared_dir=args.share)
     cont = lxc(id=args.id, net=pvenetwork(bridge=0, ip='dhcp'),
                mp=pvemountpoint(volume=args.share, mp="/root/shared", ro=0))
-    pprint.dp("cont: {}".format(cont))
+    cont.set_defaults() # set any required settings
+    pprint.dp("cont:\n{}".format(cont))
     #if create_lxc(cont, tmpl):
     #    cmd = split('pct start {}'.format(cont.id))
     #    res = sp_run(cmd)
     #    pprint.dp("cmd output: {}".format(res))
+    if not cont.status:
+        pprint.dp("lxc.create: {}".format(cont.create()))
+    elif args.force:
+        s = ("lxc.create [forced]:\n{}".format(cont.create(overwrite=True)))
+        pprint.dp(s)
     k = kernels()
     l = kernels.list
     l.sort(key=LooseVersion, reverse=True)
