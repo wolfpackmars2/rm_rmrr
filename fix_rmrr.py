@@ -1165,7 +1165,7 @@ class lxc:
                 # we do not have more than 8GB of free ram; limit resources
                 self._ram = 4 * 1024
         else:
-            self._ram = ram * 1024
+            self._ram = int(ram * 1024)
         return
 
     @property
@@ -1303,7 +1303,7 @@ class lxc:
 
     @fssize.setter
     def fssize(self, fssize: int):
-        self._fssize = fssize
+        self._fssize = int(fssize)
         return
 
     @property
@@ -1365,7 +1365,7 @@ class lxc:
             if overwrite and self.status:
                 # status returns None if VM doesn't exist
                 self.destroy()
-            return runcmd(cmd)
+            return self.runcmd(cmd)
         return cmd
 
     def destroy(self, test: bool = True) -> subprocess.CompletedProcess:
@@ -1387,6 +1387,62 @@ class lxc:
         if self.tmpl is None: self.tmpl = "debian-10"
         if self.storage is None:
             self.storage = "local-lvm"
+        return
+
+    def loadconfig(self) -> bool:
+        # only if the config file exists and LXC is created
+        if not self.status:
+            return False
+        cfg = self.configfilecontents
+        if "cores: " in cfg:
+            self.cores = cfg.partition("cores: ")[2].splitlines()[0]
+        if "memory: " in cfg:
+            mem = int(cfg.partition("memory: ")[2].splitlines()[0]) / 1024
+            self.ram = mem
+        if "hostname: " in cfg:
+            self.hostname = cfg.partition("hostname: ")[2].splitlines()[0]
+        if "size=" in cfg:
+            fssize = cfg.partition("rootfs: ")[2].partition("size=")[2]
+            fssize = fssize.splitlines()[0]
+            fssize = int(fssize.partition("G")[0])
+            self.fssize = fssize
+        nets = []
+        mounts = []
+        for c in cfg.splitlines():
+            if c.startswith("mp"):
+                # is mountpoint definition
+                m = pvemountpoint()
+                m.id = int(c[2])
+                m.volume = c.partition(": ")[2].partition(",")[0]
+                m.mp = c.partition("mp=")[2].partition(",")[0]
+                if "ro=" in c:
+                    m.ro = int(c.partition("ro=")[2].partition(",")[0])
+                mounts.append(m)
+            elif c.startswith("net"):
+                # is pvenetwork definition
+                n = pvenetwork()
+                n.id = int(c[3])
+                if "name=" in c:
+                    n.name = c.partition("name=")[2].partition(",")[0]
+                if "bridge=" in c:
+                    bridge = c.partition("bridge=vmbr")[2].partition(",")[0]
+                    n.bridge = int(bridge)
+                if "hwaddr=" in c:
+                    n.hwaddr = c.partition("hwaddr=")[2].partition(",")[0]
+                if "ip=" in c:
+                    n.ip = c.partition("ip=")[2].partition(",")[0]
+                if "type=" in c:
+                    n.type = c.partition("type=")[2].partition(",")[0]
+                nets.append(n)
+        if len(mounts) > 1:
+            self.mp = mounts
+        elif len(mounts) == 1:
+            self.mp = mounts[0]
+        if len(nets) > 1:
+            self.net = nets
+        elif len(nets) == 1:
+            self.net = nets[0]
+        return True
 
 
 def sp_run(cmd, capture_output=True, timeout=None,
@@ -1746,19 +1802,23 @@ if __name__ == "__main__":
     #cont = lxc(lxc_id=args.id, shared_dir=args.share)
     cont = lxc(id=args.id, net=pvenetwork(bridge=0, ip='dhcp'),
                mp=pvemountpoint(volume=args.share, mp="/root/shared", ro=0))
-    cont.set_defaults() # set any required settings
-    pprint.dp("cont:\n{}".format(cont))
     #if create_lxc(cont, tmpl):
     #    cmd = split('pct start {}'.format(cont.id))
     #    res = sp_run(cmd)
     #    pprint.dp("cmd output: {}".format(res))
     if not cont.status:
+        cont.set_defaults()
         pprint.dp("lxc.create: {}".format(cont.create()))
     elif args.force:
+        if cont.status:
+            cont.loadconfig()
+        else:
+            cont.set_defaults()
         s = ("lxc.create [forced]:\n{}".format(cont.create(overwrite=True)))
         pprint.dp(s)
+    pprint.dp("cont:\n{}".format(cont))
     k = kernels()
-    l = kernels.list
+    l = k.list
     l.sort(key=LooseVersion, reverse=True)
     krnl = None
     if args.kernel:
@@ -1779,6 +1839,11 @@ if __name__ == "__main__":
     if not krnl:
         # something went wrong, unable to find an installed kernel
         sys.exit("Unable to find a kernel to work with")
+    shared = ""
+    if type(cont.mp) is list:
+        shared = cont.mp[0].shared_dir
+    else:
+        shared = cont.mp.shared_dir
     script = write_bootstrap_scripts(cont.shared_dir, 'x')
     # a file exists in the pve kernel package which specifies the git id
     # the package was built against
