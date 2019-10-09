@@ -1540,7 +1540,7 @@ def get_template(name='debian-10', update=False, storage=None):
     return _AVAIL[0]
 
 
-def write_bootstrap_scripts(output_dir, target_kernel):
+def write_bootstrap_scripts(output_dir: str, target_kernel: kernel):
     """Creates the scripts to be run on the VM/LXC"""
     # Skeleton for new script files
     #output_file = "{}/gitinit.sh".format(output_dir)
@@ -1566,6 +1566,30 @@ def write_bootstrap_scripts(output_dir, target_kernel):
     git_dir = "/root/shared/git"
     conf_file = "/root/shared/bootstrap.conf"
 
+    bd = "" # build depends packages
+    if os.path.exists(f"{output_dir}/git/pve-kernel/debian/control.in"):
+        with open(f"{output_dir}/git/pve-kernel/debian/control.in", "r") as f:
+            bd = f.read()
+    if len(bd) > 10:
+        bd = bd.partition("Build-Depends: ")[2]
+        print(bd)
+        bd = bd.partition(": ")[0]
+        print(bd)
+        bd = bd.replace(",", "")
+        print(bd)
+        lines = bd.splitlines()
+        # Throw away the last line, likely 'Build-Conflicts'
+        lines = lines[0:-1]
+        print(lines)
+        bd = ""
+        for l in lines:
+            # Strip spaces
+            l = l.strip()
+            # remove any version qualifiers
+            l = l.split(" ")[0]
+            bd = f"{bd} {l}"
+        # Clean up spaces
+        bd = bd.strip()
     output_file = "{}/bootstrap.sh".format(output_dir)
     script = ("#!/bin/sh -\n"
               "if ! [ \"$(id -u)\" -eq 0 ]; then\n"
@@ -1576,9 +1600,9 @@ def write_bootstrap_scripts(output_dir, target_kernel):
               "gitdir=\"" + git_dir + "\"\n"
               "conffile=\"" + conf_file + "\""
               "\n" + "if [ -f \"${conffile}\" ]; then"
-              "\n" + "    source \"${conffile}\""
+              "\n" + "    . \"${conffile}\""
               "\n" + "fi"
-              "# Check Locale" + "\n"
+              "\n# Check Locale" + "\n"
               "if (locale 2>&1 | grep \"locale: Cannot set\"); then" + "\n"
               "    echo \"Fixing Locales\"" + "\n"
               "    echo \"en_US.UTF-8 UTF-8\" >> /etc/locale.gen" + "\n"
@@ -1589,7 +1613,8 @@ def write_bootstrap_scripts(output_dir, target_kernel):
               "# Install lsbrelease" + "\n"
               "if ! (command -v \"lsb_release\" > /dev/null 2>&1); then" + "\n"
               "    apt update" + "\n"
-              "    apt install lsb-release -y --frontend=noninteractive" + "\n"
+              "    DEBIAN_FRONTEND=noninteractive "
+              "apt install lsb-release -y" + "\n"
               "fi" + "\n"
               "# Check repos" + "\n"
               "gpg_key=\"proxmox-ve-release-6.x.gpg\"" + "\n"
@@ -1600,8 +1625,26 @@ def write_bootstrap_scripts(output_dir, target_kernel):
               "echo \"$pve_repo\" > /etc/apt/sources.list.d/pve.list" + "\n"
               "apt-get update || (echo \"Something went wrong\" && exit 1)"
               "\n" + "echo \"Installing apt updates\""
-              "\n" + "apt-get dist-upgrade -y --frontend=noninteractive"
-              "\n" + "pkgs=\"build-essential\""
+              "\n" + "DEBIAN_FRONTEND=noninteractive apt-get dist-upgrade -y"
+              "\n" + "echo \"Installing git\""
+              "\n" + "DEBIAN_FRONTEND=noninteractive apt install git -y"
+              "\n")
+    with open(output_file, "w") as script_file:
+        script_file.write(script)
+    output_file = "{}/build-depends.sh".format(output_dir)
+    script = ("#!/bin/sh -\n"
+              "if ! [ \"$(id -u)\" -eq 0 ]; then\n"
+              "    echo Must be root" + "\n"
+              "    exit 1" + "\n"
+              "fi" + "\n"
+              "startdir=$(pwd -P)" + "\n"
+              "gitdir=\"" + git_dir + "\"\n"
+              "conffile=\"" + conf_file + "\""
+              "\n" + "if [ -f \"${conffile}\" ]; then"
+              "\n" + "    . \"${conffile}\""
+              "\n" + "fi"
+              "\n" + "pkgs=\"" + bd + "\""
+              "\n" + "pkgs=\"$pkgs build-essential\""
               "\n" + "pkgs=\"$pkgs patch\""
               "\n" + "pkgs=\"$pkgs debhelper\""
               "\n" + "pkgs=\"$pkgs libpve-common-perl\""
@@ -1610,21 +1653,21 @@ def write_bootstrap_scripts(output_dir, target_kernel):
               "\n" + "pkgs=\"$pkgs git\""
               #"\n" + "pkgs=\"$pkgs \""
               "\n" + "DEBIAN_FRONTEND=noninteractive apt-get install -y $pkgs"
-              "\n" + "if ! [ -d \"${gitdir}\" ]; then"
-              "\n" + "    mkdir -p \"${gitdir}\""
-              "\n" + "fi"
-              "\n" + "cd \"${gitdir}\""
+              #"\n" + "if ! [ -d \"${gitdir}\" ]; then"
+              #"\n" + "    mkdir -p \"${gitdir}\""
+              #"\n" + "fi"
+              #"\n" + "cd \"${gitdir}\""
               #"\n" + "if ! [ -d \"kernel\" ]; then (mkdir \"kernel\"); fi"
               #"\n" + "cd kernel"
-              "\n" + "git clone git://git.proxmox.com/git/pve-kernel.git"
-              "\n" + "if ! [ -f \"${conffile}\" ]; then"
-              "\n" + "    echo \"gitdir=${gitdir}\" > ${conffile}"
-              "\n" + "fi"
-              "\n" + "cd \"${startdir}\"")
-    pprint.dp("script: {}".format(script))
+              #"\n" + "git clone git://git.proxmox.com/git/pve-kernel.git"
+              #"\n" + "if ! [ -f \"${conffile}\" ]; then"
+              #"\n" + "    echo \"gitdir=${gitdir}\" > ${conffile}"
+              #"\n" + "fi"
+              "\n" + "cd \"${startdir}\"\n")
+    #pprint.dp("script: {}".format(script))
     with open(output_file, "w") as script_file:
         script_file.write(script)
-        pprint.dp("File written: {}".format(output_file))
+        #pprint.dp("File written: {}".format(output_file))
     output_file = "{}/gitinit.sh".format(output_dir)
     script = ("#!/bin/sh -"
               "\n" + "if ! [ \"$(id -u)\" -eq 0 ]; then"
@@ -1635,36 +1678,83 @@ def write_bootstrap_scripts(output_dir, target_kernel):
               "\n" + "startdir=$(pwd -P)"
               "\n" + "conffile=\"" + conf_file + "\""
               "\n" + "gitdir=\"" + git_dir + "\""
-              "\n" + "kernel_git_url=\"\""
-              "\n" + "kernel_git_hash=\"\""
+              "\n" + "kernel_git_url=\"" + target_kernel.git_url + "\""
+              "\n" + "kernel_git_hash=\"" + target_kernel.git_hash + "\""
               "\n" + "if [ -f \"$conffile\" ]; then"
-              "\n" + "    source \"$conffile\""
+              "\n" + "    . \"$conffile\""
+              "\n" + "fi"
+              "\n" + "if ! [ -d \"${gitdir}\" ]; then"
+              "\n" + "    mkdir -p \"${gitdir}\""
               "\n" + "fi"
               "\n" + "cd \"$gitdir\""
-              "\n" + "if ! [ -d \"${gitdir}/pve-kernel"
-              "\n" + "cd pve-kernel"
-              "\n" + "if kernel_git_url == \"\"; then exit 1"
-              "\n" + "if kernel_git_hash == \"\"; then exit 1"
-              "\n" + "git checkout $kernel_git_hash"
+              "\n" + "if ! [ -d \"${gitdir}/pve-kernel\" ]; then"
+              "\n" + "    cd \"${gitdir}\""
+              "\n" + "    if kernel_git_url == \"\"; then exit 1; fi"
+              "\n" + "    if kernel_git_hash == \"\"; then exit 1; fi"
+              "\n" + "    git clone $kernel_git_url"
+              "\n" + "    cd pve-kernel"
+              "\n" + "    git checkout $kernel_git_hash"
+              "\n" + "else"
+              "\n" + "    cd \"${gitdir}\""
+              "\n" + "    git pull origin master"
+              "\n" + "    git checkout $kernel_git_hash"
+              "\n" + "fi"
               "\n" + ""
               "\n" + ""
               "\n" + ""
               "\n" + ""
               "\n" + ""
-              "\n" + ""
-              "\n" + "cd \"${startdir}\"")
-    pprint.dp("script: {}".format(script))
+              "\n" + "cd \"${startdir}\"\n")
+    #pprint.dp("script: {}".format(script))
+    with open(output_file, "w") as script_file:
+        script_file.write(script)
     if type(target_kernel) is kernel:
-        with open(output_file, "w") as script_file:
-            script_file.write(script)
-            pprint.dp("File written: {}".format(output_file))
         output_file = "{}/bootstrap.conf".format(output_dir)
         script = ("#!/bin/sh -"
                   "\n" + "kernel_git_url=\"" + target_kernel.git_url + "\""
-                  "\n" + "kernel_git_hash=\"" + target_kernel.git_hash + "\"")
+                  "\n" + "kernel_git_hash=\"" + target_kernel.git_hash + "\""
+                  "\n")
         with open(output_file, "w") as script_file:
             script_file.write(script)
-            pprint.dp("File written: {}".format(output_file))
+            #pprint.dp("File written: {}".format(output_file))
+    return
+
+
+def create_patch(shared_dir: str):
+    # call using the lxc shared volume
+    search = "return -EPERM;"
+    targetfile = f"{shared_dir}/git/pve-kernel/submodules/ubuntu-disco/drivers"
+    targetfile = f"{targetfile}/iommu/intel-iommu.c"
+    dopatch = False
+    if os.path.isfile(targetfile):
+        with open(targetfile, 'r') as file:
+            if search in file.read():
+                dopatch = True
+    if dopatch:
+        cmd = f"sed \"/{search}/d\" \"{targetfile}\" > /tmp/intel-iommu_new.c"
+        res = sp_run(cmd)
+        print(res) # debugging
+        patchfile = f"{shared_dir}/git/pve-kernel/patches/kernel"
+        patchfile = f"{patchfile}/9000-fix_rmrr.patch"
+        cmd = f"diff -u \"{targetfile}\" /tmp/intel-iommu_new.c"
+        cmd = f"{cmd} > \"{patchfile}\""
+        res = sp_run(cmd)
+        print(res)
+        cmd = f"sed -i \"s|--- {targetfile}|--- a/drivers/iommu/intel-iommu.c|"
+        cmd = f"{cmd}g\" \"{patchfile}\""
+        res = sp_run(cmd)
+        print(res)
+        cmd = f"sed -i \"s|+++ intel-iommu_new.c|+++ b/drivers/iommu"
+        cmd = f"{cmd}/intel-iommu.c|g\" \"{patchfile}\""
+        res = sp_run(cmd)
+        print(res)
+        cmd = "sed -i \"s/{{KREL}}-pve/{{krel}}-pve-rmrmrr/g\" "
+        cmd = f"{cmd}\"{shared_dir}/git/pve-kernel/Makefile\""
+        res = sp_run(cmd)
+        print(res)
+        os.remove("/tmp/intel-iommu_new.c")
+        print("run:\npct enter <lxcid>\ncd /root/shared/pve-kernel\nmake -j\n")
+    return
 
 
 def create_lxc(cont, tmpl, storage='local-lvm'):
