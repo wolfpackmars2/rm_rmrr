@@ -1726,6 +1726,10 @@ def create_patch(shared_dir: str):
     targetfile = f"{shared_dir}/git/pve-kernel/submodules/ubuntu-disco/drivers"
     targetfile = f"{targetfile}/iommu/intel-iommu.c"
     dopatch = False
+    # need to update/pull the ubuntu-disco submodule files prior to this
+    # run git command inside lxc to make sure ubuntu kernel source is
+    # up to date
+    # todo
     if os.path.isfile(targetfile):
         with open(targetfile, 'r') as file:
             if search in file.read():
