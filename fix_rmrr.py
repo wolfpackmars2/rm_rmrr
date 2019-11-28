@@ -1648,7 +1648,7 @@ def write_bootstrap_scripts(output_dir: str, target_kernel: kernel):
               "\n" + "pkgs=\"$pkgs patch\""
               "\n" + "pkgs=\"$pkgs debhelper\""
               "\n" + "pkgs=\"$pkgs libpve-common-perl\""
-              "\n" + "pkgs=\"$pkgs pve-kernel-5.0\""
+              "\n" + "pkgs=\"$pkgs pve-kernel-5.3\""
               "\n" + "pkgs=\"$pkgs pve-doc-generator\""
               "\n" + "pkgs=\"$pkgs git\""
               #"\n" + "pkgs=\"$pkgs \""
@@ -1723,7 +1723,7 @@ def write_bootstrap_scripts(output_dir: str, target_kernel: kernel):
 def create_patch(shared_dir: str):
     # call using the lxc shared volume
     search = "return -EPERM;"
-    targetfile = f"{shared_dir}/git/pve-kernel/submodules/ubuntu-disco/drivers"
+    targetfile = f"{shared_dir}/git/pve-kernel/submodules/ubuntu-eoan/drivers"
     targetfile = f"{targetfile}/iommu/intel-iommu.c"
     dopatch = False
     # need to update/pull the ubuntu-disco submodule files prior to this
@@ -1935,10 +1935,21 @@ if __name__ == "__main__":
         sys.exit("Unable to find a kernel to work with")
     shared = ""
     if type(cont.mp) is list:
-        shared = cont.mp[0].shared_dir
+        shared = cont.mp[0].volume
     else:
-        shared = cont.mp.shared_dir
-    script = write_bootstrap_scripts(cont.shared_dir, 'x')
+        shared = cont.mp.volume
+    script = write_bootstrap_scripts(shared, krnl)
+    # notes 2019.11.27
+    # Next steps:
+    # 1) enter the container and run
+    #     cd /root/shared
+    #     sh bootstrap.sh
+    #     sh build-depends.sh
+    #     sh gitinit.sh
+    # 2) then run the create_patch method
+    # 3) then it should give further instructions if successful
+    # end notes 2019.11.27
+    #create_patch(shared)
     # a file exists in the pve kernel package which specifies the git id
     # the package was built against
     # next step is to figure out which build was used and git checkout
